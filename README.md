@@ -6,4 +6,6 @@ This package provides a small library, built on top of `pyOpenSSL`, which allows
 and genereating on-demand dynamic host certs with the CA certificate. It is most useful for use with a man-in-the-middle HTTPS proxy,
 for example, for archiving or playing back web content.
 
-(This module was originally part of the [pywb](https://github.com/ikreymer/pywb) project)
+Certificates created by using this module should be used with caution.
+
+(This module was originally part of the [pywb](https://github.com/ikreymer/pywb) and [warcprox](https://github.com/internetarchive/warcprox) projects and has been split off for modularity)
