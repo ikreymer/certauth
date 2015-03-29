@@ -3,7 +3,7 @@ import pytest
 import os
 import shutil
 
-from certauth import main, CertificateAuthority
+from certauth.certauth import main, CertificateAuthority
 import tempfile
 
 #TEST_CA_DIR = os.path.join('.', 'pywb', 'framework', 'test', 'pywb_test_ca_certs')
