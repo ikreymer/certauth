@@ -30,7 +30,6 @@ def test_create_host_cert():
     assert ret == 0
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
     assert os.path.isfile(certfile)
-    #os.remove(certfile)
 
 def test_create_wildcard_host_cert_force_overwrite():
     ret = main(['example.com', '-r', TEST_CA_ROOT, '-d', TEST_CA_DIR, '-w', '-f'])

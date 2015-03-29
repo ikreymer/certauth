@@ -32,13 +32,9 @@ class CertificateAuthority(object):
     """
 
     def __init__(self, ca_file, certs_dir):
-        if not ca_file:
-            ca_file = CERT_CA_FILE
-
-        if not certs_dir:
-            certs_dir = CERTS_DIR
-
+        assert(ca_file)
         self.ca_file = ca_file
+        assert(certs_dir)
         self.certs_dir = certs_dir
 
         # read previously created root cert
@@ -243,5 +239,6 @@ def main(args=None):
                   '" already exists,' + ' use -f to overwrite')
             return 1
 
-if __name__ == "__main__":
+
+if __name__ == "__main__":  #pragma: no cover
     main()
