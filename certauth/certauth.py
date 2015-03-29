@@ -16,7 +16,7 @@ CERTS_DIR = './ca/certs/'
 
 CERT_NAME = 'certauth sample CA'
 
-CERT_CA_FILE = './ca/pywb-ca.pem'
+CERT_CA_FILE = './ca/certauth-ca.pem'
 
 
 # =================================================================

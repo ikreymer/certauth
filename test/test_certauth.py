@@ -11,7 +11,7 @@ def setup_module():
     TEST_CA_DIR = tempfile.mkdtemp()
 
     global TEST_CA_ROOT
-    TEST_CA_ROOT = os.path.join(TEST_CA_DIR, 'pywb_test_ca.pem')
+    TEST_CA_ROOT = os.path.join(TEST_CA_DIR, 'certauth_test_ca.pem')
 
     openssl_support = pytest.importorskip("OpenSSL")
     pass
