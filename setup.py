@@ -25,7 +25,7 @@ setup(
     license='MIT',
     packages=find_packages(),
     description='Simple Certificate Authority for MITM proxies',
-    long_description=open('README.md').read(),
+    long_description='Simple Certificate Authority for MITM proxies',
     provides=[
         'certauth',
         ],

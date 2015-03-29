@@ -1,29 +1,25 @@
 import logging
 import os
-openssl_avail = False
-try:
-    from OpenSSL import crypto
-    from OpenSSL.SSL import FILETYPE_PEM
-    openssl_avail = True
-except ImportError:  # pragma: no cover
-    pass
+
+from OpenSSL import crypto
+from OpenSSL.SSL import FILETYPE_PEM
 
 import random
 from argparse import ArgumentParser
 
 
-#=================================================================
+# =================================================================
 # Duration of 10 years
 CERT_DURATION = 10 * 365 * 24 * 60 * 60
 
 CERTS_DIR = './ca/certs/'
 
-CERT_NAME = 'pywb https proxy replay CA'
+CERT_NAME = 'certauth sample CA'
 
 CERT_CA_FILE = './ca/pywb-ca.pem'
 
 
-#=================================================================
+# =================================================================
 class CertificateAuthority(object):
     """
     Utility class for signing individual certificate
@@ -187,7 +183,7 @@ class CertificateAuthority(object):
         return cert, key
 
 
-#=================================================================
+# =================================================================
 def main(args=None):
     parser = ArgumentParser(description='Cert Auth Cert Maker')
 
@@ -222,14 +218,14 @@ def main(args=None):
                                                       overwrite, wildcard)
 
         if created:
-            print ('Created new cert "' + host_filename +
-                   '" signed by root cert ' +
-                   result.use_root)
+            print('Created new cert "' + host_filename +
+                  '" signed by root cert ' +
+                  result.use_root)
             return 0
 
         else:
-            print ('Cert "' + host_filename + '" already exists,' +
-                   ' use -f to overwrite')
+            print('Cert "' + host_filename + '" already exists,' +
+                  ' use -f to overwrite')
             return 1
 
     # Create new root certificate
@@ -240,11 +236,11 @@ def main(args=None):
                                           overwrite))
 
         if created:
-            print ('Created new root cert: "' + result.output_pem_file + '"')
+            print('Created new root cert: "' + result.output_pem_file + '"')
             return 0
         else:
-            print ('Root cert "' + result.output_pem_file +
-                    '" already exists,' + ' use -f to overwrite')
+            print('Root cert "' + result.output_pem_file +
+                  '" already exists,' + ' use -f to overwrite')
             return 1
 
 if __name__ == "__main__":

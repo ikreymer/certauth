@@ -1,0 +1,23 @@
+# vim: set sw=4 et:
+#
+# tox approach stolen from
+# https://github.com/pypa/pip/blob/abdb597dbfb51b21cc76c1cff068b72c80f3a77d/.travis.yml
+#
+
+language: python
+
+env:
+    - TOXENV=py27
+    - TOXENV=py32
+    - TOXENV=py33
+    - TOXENV=py34
+
+before_install:
+    - sudo apt-get update
+    - sudo apt-get -y install python-gdbm python3-gdbm
+
+before_script:
+    - pip install tox
+
+script: tox
+

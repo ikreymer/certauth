@@ -6,9 +6,6 @@ import shutil
 from certauth.certauth import main, CertificateAuthority
 import tempfile
 
-#TEST_CA_DIR = os.path.join('.', 'pywb', 'framework', 'test', 'pywb_test_ca_certs')
-#TEST_CA_ROOT = os.path.join('.', 'pywb', 'framework', 'test', 'pywb_test_ca.pem')
-
 def setup_module():
     global TEST_CA_DIR
     TEST_CA_DIR = tempfile.mkdtemp()
