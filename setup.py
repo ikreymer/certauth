@@ -24,8 +24,9 @@ setup(
     author_email='ikreymer@gmail.com',
     license='MIT',
     packages=find_packages(),
+    url='https://github.com/ikreymer/certauth',
     description='Simple Certificate Authority for MITM proxies',
-    long_description='Simple Certificate Authority for MITM proxies',
+    long_description=open('README.rst').read(),
     provides=[
         'certauth',
         ],
