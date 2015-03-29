@@ -133,6 +133,9 @@ class CertificateAuthority(object):
     @staticmethod
     def generate_host_cert(host, root_cert, root_key, host_filename,
                            wildcard=False):
+
+        host = host.encode('utf-8')
+
         # Generate key
         key = crypto.PKey()
         key.generate_key(crypto.TYPE_RSA, 2048)
@@ -150,14 +153,14 @@ class CertificateAuthority(object):
         cert.set_pubkey(req.get_pubkey())
 
         if wildcard:
-            DNS = 'DNS:'
+            DNS = b'DNS:'
             alt_hosts = [DNS + host,
-                         DNS + '*.' + host]
+                         DNS + b'*.' + host]
 
-            alt_hosts = ', '.join(alt_hosts)
+            alt_hosts = b', '.join(alt_hosts)
 
             cert.add_extensions([
-                crypto.X509Extension('subjectAltName',
+                crypto.X509Extension(b'subjectAltName',
                                      False,
                                      alt_hosts)])
 
@@ -237,7 +240,7 @@ def main(args=None):
                                           overwrite))
 
         if created:
-            print 'Created new root cert: "' + result.output_pem_file + '"'
+            print ('Created new root cert: "' + result.output_pem_file + '"')
             return 0
         else:
             print ('Root cert "' + result.output_pem_file +
