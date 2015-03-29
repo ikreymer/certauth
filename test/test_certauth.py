@@ -3,14 +3,26 @@ import pytest
 import os
 import shutil
 
-from pywb.framework.certauth import main, CertificateAuthority
+from certauth import main, CertificateAuthority
+import tempfile
 
-TEST_CA_DIR = os.path.join('.', 'pywb', 'framework', 'test', 'pywb_test_ca_certs')
-TEST_CA_ROOT = os.path.join('.', 'pywb', 'framework', 'test', 'pywb_test_ca.pem')
+#TEST_CA_DIR = os.path.join('.', 'pywb', 'framework', 'test', 'pywb_test_ca_certs')
+#TEST_CA_ROOT = os.path.join('.', 'pywb', 'framework', 'test', 'pywb_test_ca.pem')
 
 def setup_module():
+    global TEST_CA_DIR
+    TEST_CA_DIR = tempfile.mkdtemp()
+
+    global TEST_CA_ROOT
+    TEST_CA_ROOT = os.path.join(TEST_CA_DIR, 'pywb_test_ca.pem')
+
     openssl_support = pytest.importorskip("OpenSSL")
     pass
+
+def teardown_module():
+    shutil.rmtree(TEST_CA_DIR)
+    assert not os.path.isdir(TEST_CA_DIR)
+    assert not os.path.isfile(TEST_CA_ROOT)
 
 def test_create_root():
     ret = main([TEST_CA_ROOT, '-n', 'Test Root Cert'])
@@ -51,8 +63,3 @@ def test_create_root_already_exists():
     assert ret == 1
     # remove now
     os.remove(TEST_CA_ROOT)
-
-def test_delete_files():
-    shutil.rmtree(TEST_CA_DIR)
-    assert not os.path.isdir(TEST_CA_DIR)
-    assert not os.path.isfile(TEST_CA_ROOT)
