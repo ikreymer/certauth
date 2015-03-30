@@ -44,7 +44,8 @@ class CertificateAuthority(object):
         # if file doesn't exist or overwrite is true
         # create new root cert
         if (overwrite or not os.path.isfile(ca_file)):
-            self.cert, self.key = self._generate_ca_root()
+            self.cert, self.key = self.generate_ca_root(ca_file, ca_name)
+            self._file_created = True
 
         # read previously created root cert
         else:
@@ -93,13 +94,14 @@ class CertificateAuthority(object):
         cert.gmtime_adj_notAfter(CERT_DURATION)
         return cert
 
-    def _generate_ca_root(self):
+    @staticmethod
+    def generate_ca_root(ca_file, ca_name):
         # Generate key
         key = crypto.PKey()
         key.generate_key(crypto.TYPE_RSA, 2048)
 
         # Generate cert
-        cert = CertificateAuthority._make_cert(self.ca_name)
+        cert = CertificateAuthority._make_cert(ca_name)
 
         cert.set_issuer(cert.get_subject())
         cert.set_pubkey(key)
@@ -120,8 +122,7 @@ class CertificateAuthority(object):
         cert.sign(key, "sha1")
 
         # Write cert + key
-        CertificateAuthority.write_pem(self.ca_file, cert, key)
-        self._file_created = True
+        CertificateAuthority.write_pem(ca_file, cert, key)
         return cert, key
 
     @staticmethod
@@ -186,16 +187,19 @@ def main(args=None):
     parser = ArgumentParser(description='Cert Auth Cert Maker')
 
     parser.add_argument('root_ca_cert',
-                        help='path to existing or new root CA file')
+                        help='Path to existing or new root CA file')
 
     parser.add_argument('-cn', '--name', action='store', default=CERT_NAME,
-                        help='name for root certificate')
+                        help='Name for root certificate')
 
-    parser.add_argument('-hn', '--hostname', help='Hostname certificate to create')
+    parser.add_argument('-hn', '--hostname',
+                        help='Hostname certificate to create')
 
-    parser.add_argument('-d', '--certs-dir', default=CERTS_DIR)
+    parser.add_argument('-d', '--certs-dir', default=CERTS_DIR,
+                        help='Directory for host certificates')
 
-    parser.add_argument('-f', '--force', action='store_true')
+    parser.add_argument('-f', '--force', action='store_true',
+                        help='Overwrite certificates if they already exist')
 
     parser.add_argument('-w', '--wildcard_cert', action='store_true',
                         help='add wildcard SAN to host: *.<host>, <host>')
