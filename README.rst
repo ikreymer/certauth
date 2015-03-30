@@ -13,7 +13,14 @@ It is most useful for use with a man-in-the-middle HTTPS proxy, for example, for
 
 Certificates created by using this module should be used with caution.
 
-(This module was originally part of the `pywb <https://github.com/ikreymer/pywb>`_ and `warcprox <https://github.com/internetarchive/warcprox>`_ projects and has been split off for modularity)
+History
+-------
+
+The CertificateAuthority functionality was originally found in the man-in-the-middle proxy `pymiproxy <https://github.com/allfro/pymiproxy>`_ by Nadeem Douba.
+
+It was also extended in `warcprox <https://github.com/internetarchive/warcprox>`_ by `Noah Levitt <https://github.com/nlevitt>`_ of Internet Archive.
+
+The CA functionality was also reused in `pywb <https://github.com/ikreymer/pywb>`_ and finally factored out into this separate package for modularity.
 
 
 Usage Examples

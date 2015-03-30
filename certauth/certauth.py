@@ -54,7 +54,7 @@ class CertificateAuthority(object):
         if not os.path.exists(certs_dir):
             os.makedirs(certs_dir)
 
-    def get_cert_for_host(self, host, overwrite=False, wildcard=False):
+    def cert_for_host(self, host, overwrite=False, wildcard=False):
         host_filename = os.path.join(self.certs_dir, host) + '.pem'
 
         if not overwrite and os.path.exists(host_filename):
@@ -72,7 +72,7 @@ class CertificateAuthority(object):
         if len(host_parts) == 2 and '.' in host_parts[1]:
             cert_host = host_parts[1]
 
-        certfile = self.get_cert_for_host(cert_host,
+        certfile = self.cert_for_host(cert_host,
                                           wildcard=True)
 
         return certfile
@@ -234,7 +234,7 @@ def main(args=None):
 
     # Sign a certificate for a given host
     overwrite = r.force
-    host_filename = ca.get_cert_for_host(hostname,
+    host_filename = ca.cert_for_host(hostname,
                                          overwrite, wildcard)
 
     if ca._file_created:
