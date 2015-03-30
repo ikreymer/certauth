@@ -19,24 +19,22 @@ Usage Examples
 
 ::
 
-usage: certauth [-h] [-c CERTNAME] [-n HOSTNAME] [-d CERTS_DIR] [-f] [-w]
+  usage: certauth [-h] [-c CERTNAME] [-n HOSTNAME] [-d CERTS_DIR] [-f] [-w]
                 root_ca_cert
 
-Certificate Authority Cert Maker Tools
+  positional arguments:
+    root_ca_cert          Path to existing or new root CA file
 
-positional arguments:
-  root_ca_cert          Path to existing or new root CA file
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -c CERTNAME, --certname CERTNAME
+  optional arguments:
+    -h, --help            show this help message and exit
+    -c CERTNAME, --certname CERTNAME
                         Name for root certificate
-  -n HOSTNAME, --hostname HOSTNAME
+    -n HOSTNAME, --hostname HOSTNAME
                         Hostname certificate to create
-  -d CERTS_DIR, --certs-dir CERTS_DIR
+    -d CERTS_DIR, --certs-dir CERTS_DIR
                         Directory for host certificates
-  -f, --force           Overwrite certificates if they already exist
-  -w, --wildcard_cert   add wildcard SAN to host: *.<host>, <host>
+    -f, --force           Overwrite certificates if they already exist
+    -w, --wildcard_cert   add wildcard SAN to host: \*.<host>, <host>
 
 
 
