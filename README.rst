@@ -1,5 +1,5 @@
-Certificate Authority Tools
-===========================
+Certificate Authority Tools v1.1.0
+==================================
 
 .. image:: https://travis-ci.org/ikreymer/certauth.svg?branch=master
     :target: https://travis-ci.org/ikreymer/certauth
@@ -17,9 +17,31 @@ Certificates created by using this module should be used with caution.
 Usage Examples
 --------------
 
+::
+
+usage: certauth [-h] [-cn NAME] [-hn HOSTNAME] [-d CERTS_DIR] [-f] [-w]
+                root_ca_cert
+
+Cert Auth Cert Maker
+
+positional arguments:
+  root_ca_cert          Path to existing or new root CA file
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -c CERTNAME, --certname CERTNAME
+                        Name for root certificate
+  -h HOSTNAME, --hostname HOSTNAME
+                        Hostname certificate to create
+  -d CERTS_DIR, --certs-dir CERTS_DIR
+                        Directory for host certificates
+  -f, --force           Overwrite certificates if they already exist
+  -w, --wildcard_cert   add wildcard SAN to host: *.<host>, <host>
+
+
 To create a new root CA certificate:
 
-``certauth myrootca.pem -cn "My Test CA"``
+``certauth myrootca.pem --certname "My Test CA"``
 
 To create a host certificate signed with CA certificate in directory ``certs_dir``:
 
@@ -32,5 +54,3 @@ The cert for ``example.com`` will be created as ``certs_dir/example.com.pem``.
 If it already exists, it will not be overwritten (unless ``-f`` option is used).
 
 The ``-w`` can be used to create a wildcard cert which has alternate names for ``example.com`` and ``*.example.com``
-
-Run ``certauth -h`` for a full list of up-to-date options.
