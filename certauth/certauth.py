@@ -184,15 +184,15 @@ class CertificateAuthority(object):
 
 # =================================================================
 def main(args=None):
-    parser = ArgumentParser(description='Cert Auth Cert Maker')
+    parser = ArgumentParser(description='Certificate Authority Cert Maker Tools')
 
     parser.add_argument('root_ca_cert',
                         help='Path to existing or new root CA file')
 
-    parser.add_argument('-cn', '--name', action='store', default=CERT_NAME,
+    parser.add_argument('-c', '--certname', action='store', default=CERT_NAME,
                         help='Name for root certificate')
 
-    parser.add_argument('-hn', '--hostname',
+    parser.add_argument('-n', '--hostname',
                         help='Hostname certificate to create')
 
     parser.add_argument('-d', '--certs-dir', default=CERTS_DIR,
@@ -219,7 +219,7 @@ def main(args=None):
 
     ca = CertificateAuthority(ca_file=root_cert,
                               certs_dir=r.certs_dir,
-                              ca_name=r.name,
+                              ca_name=r.certname,
                               overwrite=overwrite)
 
     # Just creating the root cert

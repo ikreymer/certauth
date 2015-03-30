@@ -17,11 +17,11 @@ def teardown_module():
     assert not os.path.isfile(TEST_CA_ROOT)
 
 def test_create_root():
-    ret = main([TEST_CA_ROOT, '-cn', 'Test Root Cert'])
+    ret = main([TEST_CA_ROOT, '-c', 'Test Root Cert'])
     assert ret == 0
 
 def test_create_host_cert():
-    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-hn', 'example.com'])
+    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com'])
     assert ret == 0
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
     assert os.path.isfile(certfile)
@@ -41,7 +41,7 @@ def test_explicit_wildcard():
     os.remove(certfile)
 
 def test_create_already_exists():
-    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-hn', 'example.com', '-w'])
+    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com', '-w'])
     assert ret == 1
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
     assert os.path.isfile(certfile)
