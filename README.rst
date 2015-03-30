@@ -1,5 +1,5 @@
-Certificate Authority Tools v1.1.0
-==================================
+Certificate Authority Cert Maker Tools v1.1.0
+=============================================
 
 .. image:: https://travis-ci.org/ikreymer/certauth.svg?branch=master
     :target: https://travis-ci.org/ikreymer/certauth
@@ -19,10 +19,10 @@ Usage Examples
 
 ::
 
-usage: certauth [-h] [-cn NAME] [-hn HOSTNAME] [-d CERTS_DIR] [-f] [-w]
+usage: certauth [-h] [-c CERTNAME] [-n HOSTNAME] [-d CERTS_DIR] [-f] [-w]
                 root_ca_cert
 
-Cert Auth Cert Maker
+Certificate Authority Cert Maker Tools
 
 positional arguments:
   root_ca_cert          Path to existing or new root CA file
@@ -31,12 +31,13 @@ optional arguments:
   -h, --help            show this help message and exit
   -c CERTNAME, --certname CERTNAME
                         Name for root certificate
-  -h HOSTNAME, --hostname HOSTNAME
+  -n HOSTNAME, --hostname HOSTNAME
                         Hostname certificate to create
   -d CERTS_DIR, --certs-dir CERTS_DIR
                         Directory for host certificates
   -f, --force           Overwrite certificates if they already exist
   -w, --wildcard_cert   add wildcard SAN to host: *.<host>, <host>
+
 
 
 To create a new root CA certificate:
