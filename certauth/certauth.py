@@ -16,9 +16,6 @@ CERTS_DIR = './ca/certs/'
 
 CERT_NAME = 'certauth sample CA'
 
-CERT_CA_FILE = './ca/certauth-ca.pem'
-
-
 # =================================================================
 class CertificateAuthority(object):
     """
@@ -31,36 +28,51 @@ class CertificateAuthority(object):
     in specified certs_dir and reused if previously created.
     """
 
-    def __init__(self, ca_file, certs_dir):
+    def __init__(self, ca_file, certs_dir, ca_name,
+                 overwrite=False):
         assert(ca_file)
         self.ca_file = ca_file
+
         assert(certs_dir)
         self.certs_dir = certs_dir
 
+        assert(ca_name)
+        self.ca_name = ca_name
+
+        self._file_created = False
+
+        # if file doesn't exist or overwrite is true
+        # create new root cert
+        if (overwrite or not os.path.isfile(ca_file)):
+            self.cert, self.key = self._generate_ca_root()
+
         # read previously created root cert
-        self.cert, self.key = self.read_pem(ca_file)
+        else:
+            self.cert, self.key = self.read_pem(ca_file)
 
         if not os.path.exists(certs_dir):
-            os.mkdir(certs_dir)
+            os.makedirs(certs_dir)
 
     def get_cert_for_host(self, host, overwrite=False, wildcard=False):
         host_filename = os.path.join(self.certs_dir, host) + '.pem'
 
         if not overwrite and os.path.exists(host_filename):
-            return False, host_filename
+            self._file_created = False
+            return host_filename
 
         self.generate_host_cert(host, self.cert, self.key, host_filename,
                                 wildcard)
 
-        return True, host_filename
+        self._file_created = True
+        return host_filename
 
     def get_wildcard_cert(self, cert_host):
         host_parts = cert_host.split('.', 1)
         if len(host_parts) == 2 and '.' in host_parts[1]:
             cert_host = host_parts[1]
 
-        created, certfile = self.get_cert_for_host(cert_host,
-                                                   wildcard=True)
+        certfile = self.get_cert_for_host(cert_host,
+                                          wildcard=True)
 
         return certfile
 
@@ -73,32 +85,21 @@ class CertificateAuthority(object):
     @staticmethod
     def _make_cert(certname):
         cert = crypto.X509()
-        cert.set_version(2)
         cert.set_serial_number(random.randint(0, 2 ** 64 - 1))
         cert.get_subject().CN = certname
 
+        cert.set_version(2)
         cert.gmtime_adj_notBefore(0)
         cert.gmtime_adj_notAfter(CERT_DURATION)
         return cert
 
-    @staticmethod
-    def generate_ca_root(ca_file, certname, overwrite=False):
-        if not certname:
-            certname = CERT_NAME
-
-        if not ca_file:
-            ca_file = CERT_CA_FILE
-
-        if not overwrite and os.path.exists(ca_file):
-            cert, key = CertificateAuthority.read_pem(ca_file)
-            return False, cert, key
-
+    def _generate_ca_root(self):
         # Generate key
         key = crypto.PKey()
         key.generate_key(crypto.TYPE_RSA, 2048)
 
         # Generate cert
-        cert = CertificateAuthority._make_cert(certname)
+        cert = CertificateAuthority._make_cert(self.ca_name)
 
         cert.set_issuer(cert.get_subject())
         cert.set_pubkey(key)
@@ -119,8 +120,9 @@ class CertificateAuthority(object):
         cert.sign(key, "sha1")
 
         # Write cert + key
-        CertificateAuthority.write_pem(ca_file, cert, key)
-        return True, cert, key
+        CertificateAuthority.write_pem(self.ca_file, cert, key)
+        self._file_created = True
+        return cert, key
 
     @staticmethod
     def generate_host_cert(host, root_cert, root_key, host_filename,
@@ -183,14 +185,13 @@ class CertificateAuthority(object):
 def main(args=None):
     parser = ArgumentParser(description='Cert Auth Cert Maker')
 
-    parser.add_argument('output_pem_file', help='path to cert .pem file')
+    parser.add_argument('root_ca_cert',
+                        help='path to existing or new root CA file')
 
-    parser.add_argument('-r', '--use-root',
-                        help=('use specified root cert (.pem file) ' +
-                              'to create signed cert'))
-
-    parser.add_argument('-n', '--name', action='store', default=CERT_NAME,
+    parser.add_argument('-cn', '--name', action='store', default=CERT_NAME,
                         help='name for root certificate')
+
+    parser.add_argument('-hn', '--hostname', help='Hostname certificate to create')
 
     parser.add_argument('-d', '--certs-dir', default=CERTS_DIR)
 
@@ -199,45 +200,49 @@ def main(args=None):
     parser.add_argument('-w', '--wildcard_cert', action='store_true',
                         help='add wildcard SAN to host: *.<host>, <host>')
 
-    result = parser.parse_args(args=args)
+    r = parser.parse_args(args=args)
 
-    overwrite = result.force
+    certs_dir = r.certs_dir
+    wildcard = r.wildcard_cert
 
-    # Create a new signed certificate using specified root
-    if result.use_root:
-        certs_dir = result.certs_dir
-        wildcard = result.wildcard_cert
-        ca = CertificateAuthority(ca_file=result.use_root,
-                                  certs_dir=result.certs_dir)
+    root_cert = r.root_ca_cert
+    hostname = r.hostname
 
-        created, host_filename = ca.get_cert_for_host(result.output_pem_file,
-                                                      overwrite, wildcard)
-
-        if created:
-            print('Created new cert "' + host_filename +
-                  '" signed by root cert ' +
-                  result.use_root)
-            return 0
-
-        else:
-            print('Cert "' + host_filename + '" already exists,' +
-                  ' use -f to overwrite')
-            return 1
-
-    # Create new root certificate
+    if not hostname:
+        overwrite = r.force
     else:
-        created, c, k = (CertificateAuthority.
-                         generate_ca_root(result.output_pem_file,
-                                          result.name,
-                                          overwrite))
+        overwrite = False
 
-        if created:
-            print('Created new root cert: "' + result.output_pem_file + '"')
+    ca = CertificateAuthority(ca_file=root_cert,
+                              certs_dir=r.certs_dir,
+                              ca_name=r.name,
+                              overwrite=overwrite)
+
+    # Just creating the root cert
+    if not hostname:
+        if ca._file_created:
+            print('Created new root cert: "' + root_cert + '"')
             return 0
         else:
-            print('Root cert "' + result.output_pem_file +
+            print('Root cert "' + root_cert +
                   '" already exists,' + ' use -f to overwrite')
             return 1
+
+    # Sign a certificate for a given host
+    overwrite = r.force
+    host_filename = ca.get_cert_for_host(hostname,
+                                         overwrite, wildcard)
+
+    if ca._file_created:
+        print('Created new cert "' + hostname +
+              '" signed by root cert ' +
+              root_cert)
+        return 0
+
+    else:
+        print('Cert for "' + hostname + '" already exists,' +
+              ' use -f to overwrite')
+        return 1
 
 
 if __name__ == "__main__":  #pragma: no cover
