@@ -1,4 +1,4 @@
-Certificate Authority Cert Maker Tools v1.1.0
+Certificate Authority Cert Maker Tools v1.1.1
 =============================================
 
 .. image:: https://travis-ci.org/ikreymer/certauth.svg?branch=master
