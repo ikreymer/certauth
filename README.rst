@@ -54,4 +54,4 @@ If ``certs_dir``, doesn't exist, it'll be created automatically also.
 The cert for ``example.com`` will be created as ``certs_dir/example.com.pem``.
 If it already exists, it will not be overwritten (unless ``-f`` option is used).
 
-The ``-w`` can be used to create a wildcard cert which has alternate names for ``example.com`` and ``*.example.com``
+The ``-w`` option can be used to create a wildcard cert which has subject alternate names (SAN) for ``example.com`` and ``*.example.com``
