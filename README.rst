@@ -3,6 +3,8 @@ Certificate Authority Cert Maker Tools v1.1.0
 
 .. image:: https://travis-ci.org/ikreymer/certauth.svg?branch=master
     :target: https://travis-ci.org/ikreymer/certauth
+.. image:: https://coveralls.io/repos/ikreymer/certauth/badge.svg?branch=master
+    :target: https://coveralls.io/r/ikreymer/certauth?branch=master
 
 This package provides a small library, built on top of ``pyOpenSSL``, which allows for creating a custom certificate authority certificate,
 and genereating on-demand dynamic host certs using that CA certificate.
