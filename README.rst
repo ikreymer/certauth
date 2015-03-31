@@ -43,7 +43,7 @@ Usage Examples
     -d CERTS_DIR, --certs-dir CERTS_DIR
                         Directory for host certificates
     -f, --force           Overwrite certificates if they already exist
-    -w, --wildcard_cert   add wildcard SAN to host: \*.<host>, <host>
+    -w, --wildcard_cert   add wildcard SAN to host: *.<host>, <host>
 
 
 

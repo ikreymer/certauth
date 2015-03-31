@@ -73,7 +73,7 @@ class CertificateAuthority(object):
             cert_host = host_parts[1]
 
         certfile = self.cert_for_host(cert_host,
-                                          wildcard=True)
+                                      wildcard=True)
 
         return certfile
 
