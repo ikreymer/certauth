@@ -16,6 +16,9 @@ CERTS_DIR = './ca/certs/'
 
 CERT_NAME = 'certauth sample CA'
 
+DEF_HASH_FUNC = 'sha256'
+
+
 # =================================================================
 class CertificateAuthority(object):
     """
@@ -95,7 +98,7 @@ class CertificateAuthority(object):
         return cert
 
     @staticmethod
-    def generate_ca_root(ca_file, ca_name):
+    def generate_ca_root(ca_file, ca_name, hash_func=DEF_HASH_FUNC):
         # Generate key
         key = crypto.PKey()
         key.generate_key(crypto.TYPE_RSA, 2048)
@@ -119,7 +122,7 @@ class CertificateAuthority(object):
                                  b"hash",
                                  subject=cert),
             ])
-        cert.sign(key, "sha1")
+        cert.sign(key, hash_func)
 
         # Write cert + key
         CertificateAuthority.write_pem(ca_file, cert, key)
@@ -127,7 +130,7 @@ class CertificateAuthority(object):
 
     @staticmethod
     def generate_host_cert(host, root_cert, root_key, host_filename,
-                           wildcard=False):
+                           wildcard=False, hash_func=DEF_HASH_FUNC):
 
         host = host.encode('utf-8')
 
@@ -139,7 +142,7 @@ class CertificateAuthority(object):
         req = crypto.X509Req()
         req.get_subject().CN = host
         req.set_pubkey(key)
-        req.sign(key, 'sha1')
+        req.sign(key, hash_func)
 
         # Generate Cert
         cert = CertificateAuthority._make_cert(host)
@@ -159,7 +162,7 @@ class CertificateAuthority(object):
                                      False,
                                      alt_hosts)])
 
-        cert.sign(root_key, 'sha1')
+        cert.sign(root_key, hash_func)
 
         # Write cert + key
         CertificateAuthority.write_pem(host_filename, cert, key)
