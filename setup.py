@@ -5,6 +5,10 @@ from setuptools import setup, find_packages
 from setuptools.command.test import test as TestCommand
 
 class PyTest(TestCommand):
+    def initialize_options(self):
+        TestCommand.initialize_options(self)
+        self._argv = []
+
     def finalize_options(self):
         TestCommand.finalize_options(self)
         self.test_suite = True
@@ -19,7 +23,7 @@ class PyTest(TestCommand):
 
 setup(
     name='certauth',
-    version='1.1.2',
+    version='1.1.3',
     author='Ilya Kreymer',
     author_email='ikreymer@gmail.com',
     license='MIT',
