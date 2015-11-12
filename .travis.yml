@@ -13,6 +13,13 @@ env:
     - TOXENV=py34
     - TOXENV=py35
 
+addons:
+  apt:
+    sources:
+      - deadsnakes
+    packages:
+      - python3.5
+
 before_install:
     - sudo apt-get update
     - sudo apt-get -y install python-gdbm python3-gdbm
