@@ -5,13 +5,10 @@ from setuptools import setup, find_packages
 from setuptools.command.test import test as TestCommand
 
 class PyTest(TestCommand):
-    def initialize_options(self):
-        TestCommand.initialize_options(self)
-        self._argv = []
-
     def finalize_options(self):
         TestCommand.finalize_options(self)
-        self.test_suite = True
+        # should work with setuptools <18, 18 18.5
+        self.test_suite = ' '
 
     def run_tests(self):
         import pytest
