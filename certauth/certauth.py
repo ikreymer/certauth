@@ -44,6 +44,9 @@ class CertificateAuthority(object):
 
         self._file_created = False
 
+        if not os.path.exists(certs_dir):
+            os.makedirs(certs_dir)
+
         # if file doesn't exist or overwrite is true
         # create new root cert
         if (overwrite or not os.path.isfile(ca_file)):
@@ -53,9 +56,6 @@ class CertificateAuthority(object):
         # read previously created root cert
         else:
             self.cert, self.key = self.read_pem(ca_file)
-
-        if not os.path.exists(certs_dir):
-            os.makedirs(certs_dir)
 
     def cert_for_host(self, host, overwrite=False, wildcard=False):
         host_filename = os.path.join(self.certs_dir, host) + '.pem'
