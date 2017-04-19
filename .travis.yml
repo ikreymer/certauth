@@ -1,26 +1,25 @@
-# vim: set sw=4 et:
-#
-# tox approach stolen from
-# https://github.com/pypa/pip/blob/abdb597dbfb51b21cc76c1cff068b72c80f3a77d/.travis.yml
-#
-
 language: python
 
-env:
-    - TOXENV=py26
-    - TOXENV=py27
-    - TOXENV=py33
-    - TOXENV=py34
+python:
+  - "2.6"
+  - "2.7"
+  - "3.3"
+  - "3.4"
+  - "3.5"
+  - "3.6"
 
-before_install:
-    - sudo apt-get update
-    - sudo apt-get -y install python-gdbm python3-gdbm
-    - pip install coveralls --use-mirrors
+os:
+  - linux
 
-before_script:
-    - pip install tox
+sudo: false
 
-script: tox
+install:
+  - python setup.py install
+  - pip install coverage pytest-cov coveralls
+
+script:
+  - python setup.py test
 
 after_success:
-    coveralls
+  - coveralls
+

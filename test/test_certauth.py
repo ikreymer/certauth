@@ -59,9 +59,12 @@ def test_create_root_subdir():
     # create a new cert in a subdirectory
     subdir = os.path.join(TEST_CA_DIR, 'subdir')
 
-    ca = CertificateAuthority(TEST_CA_ROOT, subdir, 'Test CA')
+    ca_file = os.path.join(subdir, 'certauth_test_ca.pem')
+
+    ca = CertificateAuthority(ca_file, subdir, 'Test CA')
 
     assert os.path.isdir(subdir)
+    assert os.path.isfile(ca_file)
 
     buff = ca.get_root_PKCS12()
     assert len(buff) > 0
