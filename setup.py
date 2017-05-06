@@ -14,13 +14,13 @@ class PyTest(TestCommand):
         import pytest
         import sys
         import os
-        cmdline = ' --cov certauth -v test/'
-        errcode = pytest.main(cmdline)
+        cmdline = '--cov certauth -v test/'
+        errcode = pytest.main(cmdline.split(' '))
         sys.exit(errcode)
 
 setup(
     name='certauth',
-    version='1.1.4',
+    version='1.1.5',
     author='Ilya Kreymer',
     author_email='ikreymer@gmail.com',
     license='MIT',
@@ -46,7 +46,7 @@ setup(
         'pytest-cov',
     ],
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 2.6',
