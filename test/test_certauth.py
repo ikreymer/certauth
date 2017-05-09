@@ -3,6 +3,8 @@ import shutil
 
 from certauth.certauth import main, CertificateAuthority
 import tempfile
+from OpenSSL import crypto
+import datetime
 
 def setup_module():
     global TEST_CA_DIR
@@ -70,3 +72,17 @@ def test_create_root_subdir():
 
     buff = ca.get_root_PKCS12()
     assert len(buff) > 0
+
+    expected_not_before = datetime.datetime.utcnow() - datetime.timedelta(seconds=60 * 60)
+    expected_not_after = expected_not_before + datetime.timedelta(seconds=60 * 60 * 24 * 3)
+
+    cert = crypto.load_pkcs12(buff).get_certificate()
+
+    actual_not_before = datetime.datetime.strptime(
+            cert.get_notBefore().decode('ascii'), '%Y%m%d%H%M%SZ')
+    actual_not_after = datetime.datetime.strptime(
+            cert.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ')
+
+    assert abs((actual_not_before - expected_not_before).total_seconds()) < 10
+    assert abs((actual_not_after - expected_not_after).total_seconds()) < 10
+
