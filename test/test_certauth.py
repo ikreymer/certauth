@@ -83,6 +83,6 @@ def test_create_root_subdir():
     actual_not_after = datetime.datetime.strptime(
             cert.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ')
 
-    assert abs((actual_not_before - expected_not_before).total_seconds()) < 10
-    assert abs((actual_not_after - expected_not_after).total_seconds()) < 10
+    assert abs((actual_not_before.timestamp() - expected_not_before.timestamp())) < 10
+    assert abs((actual_not_after.timestamp() - expected_not_after.timestamp())) < 10
 
