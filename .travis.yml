@@ -14,6 +14,7 @@ os:
 sudo: false
 
 install:
+  - pip install -U pip setuptools
   - python setup.py install
   - pip install coverage pytest-cov coveralls
 

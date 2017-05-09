@@ -9,8 +9,10 @@ from argparse import ArgumentParser
 
 
 # =================================================================
-# Duration of 10 years
-CERT_DURATION = 10 * 365 * 24 * 60 * 60
+# Valid for 3 years from now
+# Max validity is 39 months:
+# https://casecurity.org/2015/02/19/ssl-certificate-validity-periods-limited-to-39-months-starting-in-april/
+CERT_NOT_AFTER = 3 * 365 * 24 * 60 * 60
 
 CERTS_DIR = './ca/certs/'
 
@@ -32,7 +34,10 @@ class CertificateAuthority(object):
     """
 
     def __init__(self, ca_file, certs_dir, ca_name,
-                 overwrite=False):
+                 overwrite=False,
+                 cert_not_before=0,
+                 cert_not_after=CERT_NOT_AFTER):
+
         assert(ca_file)
         self.ca_file = ca_file
 
@@ -43,6 +48,9 @@ class CertificateAuthority(object):
         self.ca_name = ca_name
 
         self._file_created = False
+
+        self.cert_not_before = cert_not_before
+        self.cert_not_after = cert_not_after
 
         if not os.path.exists(certs_dir):
             os.makedirs(certs_dir)
@@ -86,25 +94,23 @@ class CertificateAuthority(object):
         p12.set_privatekey(self.key)
         return p12.export()
 
-    @staticmethod
-    def _make_cert(certname):
+    def _make_cert(self, certname):
         cert = crypto.X509()
         cert.set_serial_number(random.randint(0, 2 ** 64 - 1))
         cert.get_subject().CN = certname
 
         cert.set_version(2)
-        cert.gmtime_adj_notBefore(0)
-        cert.gmtime_adj_notAfter(CERT_DURATION)
+        cert.gmtime_adj_notBefore(self.cert_not_before)
+        cert.gmtime_adj_notAfter(self.cert_not_after)
         return cert
 
-    @staticmethod
-    def generate_ca_root(ca_file, ca_name, hash_func=DEF_HASH_FUNC):
+    def generate_ca_root(self, ca_file, ca_name, hash_func=DEF_HASH_FUNC):
         # Generate key
         key = crypto.PKey()
         key.generate_key(crypto.TYPE_RSA, 2048)
 
         # Generate cert
-        cert = CertificateAuthority._make_cert(ca_name)
+        cert = self._make_cert(ca_name)
 
         cert.set_issuer(cert.get_subject())
         cert.set_pubkey(key)
@@ -125,11 +131,10 @@ class CertificateAuthority(object):
         cert.sign(key, hash_func)
 
         # Write cert + key
-        CertificateAuthority.write_pem(ca_file, cert, key)
+        self.write_pem(ca_file, cert, key)
         return cert, key
 
-    @staticmethod
-    def generate_host_cert(host, root_cert, root_key, host_filename,
+    def generate_host_cert(self, host, root_cert, root_key, host_filename,
                            wildcard=False, hash_func=DEF_HASH_FUNC):
 
         host = host.encode('utf-8')
@@ -145,7 +150,7 @@ class CertificateAuthority(object):
         req.sign(key, hash_func)
 
         # Generate Cert
-        cert = CertificateAuthority._make_cert(host)
+        cert = self._make_cert(host)
 
         cert.set_issuer(root_cert.get_subject())
         cert.set_pubkey(req.get_pubkey())
@@ -165,18 +170,16 @@ class CertificateAuthority(object):
         cert.sign(root_key, hash_func)
 
         # Write cert + key
-        CertificateAuthority.write_pem(host_filename, cert, key)
+        self.write_pem(host_filename, cert, key)
         return cert, key
 
-    @staticmethod
-    def write_pem(filename, cert, key):
+    def write_pem(self, filename, cert, key):
         with open(filename, 'wb+') as f:
             f.write(crypto.dump_privatekey(FILETYPE_PEM, key))
 
             f.write(crypto.dump_certificate(FILETYPE_PEM, cert))
 
-    @staticmethod
-    def read_pem(filename):
+    def read_pem(self, filename):
         with open(filename, 'r') as f:
             cert = crypto.load_certificate(FILETYPE_PEM, f.read())
             f.seek(0)
