@@ -5,6 +5,7 @@ from certauth.certauth import main, CertificateAuthority
 import tempfile
 from OpenSSL import crypto
 import datetime
+import time
 
 def setup_module():
     global TEST_CA_DIR
@@ -83,6 +84,7 @@ def test_create_root_subdir():
     actual_not_after = datetime.datetime.strptime(
             cert.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ')
 
-    assert abs((actual_not_before.timestamp() - expected_not_before.timestamp())) < 10
-    assert abs((actual_not_after.timestamp() - expected_not_after.timestamp())) < 10
+    time.mktime(expected_not_before.utctimetuple())
+    assert abs((time.mktime(actual_not_before.utctimetuple()) - time.mktime(expected_not_before.utctimetuple()))) < 10
+    assert abs((time.mktime(actual_not_after.utctimetuple()) - time.mktime(expected_not_after.utctimetuple()))) < 10
 
