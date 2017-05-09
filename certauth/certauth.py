@@ -9,10 +9,10 @@ from argparse import ArgumentParser
 
 
 # =================================================================
-# Duration of 3 years
-# Max vailidity is 39 months:
+# Valid for 3 years from now
+# Max validity is 39 months:
 # https://casecurity.org/2015/02/19/ssl-certificate-validity-periods-limited-to-39-months-starting-in-april/
-CERT_DURATION = 3 * 365 * 24 * 60 * 60
+CERT_NOT_AFTER = 3 * 365 * 24 * 60 * 60
 
 CERTS_DIR = './ca/certs/'
 
@@ -35,8 +35,8 @@ class CertificateAuthority(object):
 
     def __init__(self, ca_file, certs_dir, ca_name,
                  overwrite=False,
-                 cert_start=0,
-                 cert_duration=CERT_DURATION):
+                 cert_not_before=0,
+                 cert_not_after=CERT_NOT_AFTER):
 
         assert(ca_file)
         self.ca_file = ca_file
@@ -49,8 +49,8 @@ class CertificateAuthority(object):
 
         self._file_created = False
 
-        self.cert_start = cert_start
-        self.cert_duration = cert_duration
+        self.cert_not_before = cert_not_before
+        self.cert_not_after = cert_not_after
 
         if not os.path.exists(certs_dir):
             os.makedirs(certs_dir)
@@ -100,8 +100,8 @@ class CertificateAuthority(object):
         cert.get_subject().CN = certname
 
         cert.set_version(2)
-        cert.gmtime_adj_notBefore(self.cert_start)
-        cert.gmtime_adj_notAfter(self.cert_duration)
+        cert.gmtime_adj_notBefore(self.cert_not_before)
+        cert.gmtime_adj_notAfter(self.cert_not_after)
         return cert
 
     def generate_ca_root(self, ca_file, ca_name, hash_func=DEF_HASH_FUNC):

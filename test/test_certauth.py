@@ -64,8 +64,8 @@ def test_create_root_subdir():
     ca_file = os.path.join(subdir, 'certauth_test_ca.pem')
 
     ca = CertificateAuthority(ca_file, subdir, 'Test CA',
-                             cert_start=-60 * 60,
-                             cert_duration=60 * 60 * 24 * 3)
+                              cert_not_before=-60 * 60,
+                              cert_not_after=60 * 60 * 24 * 3)
 
     assert os.path.isdir(subdir)
     assert os.path.isfile(ca_file)
@@ -74,7 +74,7 @@ def test_create_root_subdir():
     assert len(buff) > 0
 
     expected_not_before = datetime.datetime.utcnow() - datetime.timedelta(seconds=60 * 60)
-    expected_not_after = expected_not_before + datetime.timedelta(seconds=60 * 60 * 24 * 3)
+    expected_not_after = datetime.datetime.utcnow() + datetime.timedelta(seconds=60 * 60 * 24 * 3)
 
     cert = crypto.load_pkcs12(buff).get_certificate()
 
