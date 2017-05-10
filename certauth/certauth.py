@@ -1,6 +1,8 @@
 import logging
 import os
 
+from io import BytesIO
+
 from OpenSSL import crypto
 from OpenSSL.SSL import FILETYPE_PEM
 
@@ -34,7 +36,8 @@ class CertificateAuthority(object):
     in specified certs_dir and reused if previously created.
     """
 
-    def __init__(self, ca_file, certs_dir, ca_name,
+    def __init__(self, ca_file, ca_name,
+                 cert_cache=None,
                  overwrite=False,
                  cert_not_before=0,
                  cert_not_after=CERT_NOT_AFTER):
@@ -42,8 +45,7 @@ class CertificateAuthority(object):
         assert(ca_file)
         self.ca_file = ca_file
 
-        assert(certs_dir)
-        self.certs_dir = certs_dir
+        self.cert_cache = cert_cache or dict()
 
         assert(ca_name)
         self.ca_name = ca_name
@@ -53,44 +55,46 @@ class CertificateAuthority(object):
         self.cert_not_before = cert_not_before
         self.cert_not_after = cert_not_after
 
-        if not os.path.exists(certs_dir):
-            os.makedirs(certs_dir)
+        if not os.path.exists(os.path.dirname(ca_file)):
+            os.makedirs(os.path.dirname(ca_file))
 
         # if file doesn't exist or overwrite is true
         # create new root cert
         if (overwrite or not os.path.isfile(ca_file)):
             self.cert, self.key = self.generate_ca_root(ca_file, ca_name)
             self._file_created = True
+            return
 
         # read previously created root cert
-        else:
-            self.cert, self.key = self.read_pem(ca_file)
-
-        self._lock = threading.Lock()
+        with open(ca_file, 'rb') as buff:
+            self.cert, self.key = self.read_pem(buff)
 
     def cert_for_host(self, host, overwrite=False, wildcard=False):
-        with self._lock:
-            host_filename = os.path.join(self.certs_dir, host) + '.pem'
+       cert_str = None
 
-            if not overwrite and os.path.exists(host_filename):
-                self._file_created = False
-                return host_filename
+        if not overwrite:
+            cert_str = self.cert_cache.get(host)
 
-            self.generate_host_cert(host, self.cert, self.key, host_filename,
-                                    wildcard)
+        if cert_str:
+            cert, key = self.read_pem(BytesIO(cert_str))
+            return cert, key
 
-            self._file_created = True
-            return host_filename
+        cert_str, cert, key = self.generate_host_cert(host, self.cert, self.key, wildcard)
+
+        self.cert_cache[host] = cert_str
+        self._file_created = True
+
+        return cert, key
 
     def get_wildcard_cert(self, cert_host):
         host_parts = cert_host.split('.', 1)
         if len(host_parts) == 2 and '.' in host_parts[1]:
             cert_host = host_parts[1]
 
-        certfile = self.cert_for_host(cert_host,
+        cert_key = self.cert_for_host(cert_host,
                                       wildcard=True)
 
-        return certfile
+        return cert_key
 
     def get_root_PKCS12(self):
         p12 = crypto.PKCS12()
@@ -135,10 +139,12 @@ class CertificateAuthority(object):
         cert.sign(key, hash_func)
 
         # Write cert + key
-        self.write_pem(ca_file, cert, key)
+        with open(ca_file, 'w+b') as buff:
+            self.write_pem(buff, cert, key)
+
         return cert, key
 
-    def generate_host_cert(self, host, root_cert, root_key, host_filename,
+    def generate_host_cert(self, host, root_cert, root_key,
                            wildcard=False, hash_func=DEF_HASH_FUNC):
 
         host = host.encode('utf-8')
@@ -174,22 +180,43 @@ class CertificateAuthority(object):
         cert.sign(root_key, hash_func)
 
         # Write cert + key
-        self.write_pem(host_filename, cert, key)
+        buff = BytesIO()
+        self.write_pem(buff, cert, key)
+        return buff.getvalue(), cert, key
+
+    def write_pem(self, buff, cert, key):
+        buff.write(crypto.dump_privatekey(FILETYPE_PEM, key))
+        buff.write(crypto.dump_certificate(FILETYPE_PEM, cert))
+
+    def read_pem(self, buff):
+        cert = crypto.load_certificate(FILETYPE_PEM, buff.read())
+        buff.seek(0)
+        key = crypto.load_privatekey(FILETYPE_PEM, buff.read())
         return cert, key
 
-    def write_pem(self, filename, cert, key):
-        with open(filename, 'wb+') as f:
-            f.write(crypto.dump_privatekey(FILETYPE_PEM, key))
 
-            f.write(crypto.dump_certificate(FILETYPE_PEM, cert))
+# =================================================================
+class FileCache(object):
+    def __init__(self, certs_dir):
+        self._lock = threading.Lock()
+        self.certs_dir = certs_dir
 
-    def read_pem(self, filename):
-        with open(filename, 'r') as f:
-            cert = crypto.load_certificate(FILETYPE_PEM, f.read())
-            f.seek(0)
-            key = crypto.load_privatekey(FILETYPE_PEM, f.read())
+    def file_for_host(self, host):
+        return os.path.join(self.certs_dir, host) + '.pem'
 
-        return cert, key
+    def __setitem__(self, host, cert_string):
+        filename = self.file_for_host(host)
+        with self._lock:
+            with open(filename, 'wb') as fh:
+                fh.write(cert_string)
+
+    def get(self, host):
+        filename = self.file_for_host(host)
+        try:
+            with open(filename, 'rb') as fh:
+                return fh.read()
+        except:
+            return b''
 
 
 # =================================================================
@@ -228,7 +255,7 @@ def main(args=None):
         overwrite = False
 
     ca = CertificateAuthority(ca_file=root_cert,
-                              certs_dir=r.certs_dir,
+                              cert_cache=FileCache(r.certs_dir),
                               ca_name=r.certname,
                               overwrite=overwrite)
 
@@ -244,8 +271,8 @@ def main(args=None):
 
     # Sign a certificate for a given host
     overwrite = r.force
-    host_filename = ca.cert_for_host(hostname,
-                                         overwrite, wildcard)
+    host_cert_key = ca.cert_for_host(hostname,
+                                     overwrite, wildcard)
 
     if ca._file_created:
         print('Created new cert "' + hostname +

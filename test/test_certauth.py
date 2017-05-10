@@ -1,7 +1,8 @@
 import os
 import shutil
 
-from certauth.certauth import main, CertificateAuthority
+from certauth.certauth import main, CertificateAuthority, FileCache
+
 import tempfile
 from OpenSSL import crypto
 import datetime
@@ -36,12 +37,11 @@ def test_create_wildcard_host_cert_force_overwrite():
     assert os.path.isfile(certfile)
 
 def test_explicit_wildcard():
-    ca = CertificateAuthority(TEST_CA_ROOT, TEST_CA_DIR, 'Test CA')
-    filename = ca.get_wildcard_cert('test.example.proxy')
-    certfile = os.path.join(TEST_CA_DIR, 'example.proxy.pem')
-    assert filename == certfile
-    assert os.path.isfile(certfile)
-    os.remove(certfile)
+    ca = CertificateAuthority(TEST_CA_ROOT, 'Test CA', cert_cache=FileCache(TEST_CA_DIR))
+    cert, key = ca.get_wildcard_cert('test.example.proxy')
+    filename = os.path.join(TEST_CA_DIR, 'example.proxy.pem')
+    assert os.path.isfile(filename)
+    os.remove(filename)
 
 def test_create_already_exists():
     ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com', '-w'])
@@ -64,7 +64,7 @@ def test_create_root_subdir():
 
     ca_file = os.path.join(subdir, 'certauth_test_ca.pem')
 
-    ca = CertificateAuthority(ca_file, subdir, 'Test CA',
+    ca = CertificateAuthority(ca_file, 'Test CA',
                               cert_not_before=-60 * 60,
                               cert_not_after=60 * 60 * 24 * 3)
 
