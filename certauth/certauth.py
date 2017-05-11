@@ -7,6 +7,7 @@ from OpenSSL.SSL import FILETYPE_PEM
 import random
 from argparse import ArgumentParser
 
+import threading
 
 # =================================================================
 # Valid for 3 years from now
@@ -65,18 +66,21 @@ class CertificateAuthority(object):
         else:
             self.cert, self.key = self.read_pem(ca_file)
 
+        self._lock = threading.Lock()
+
     def cert_for_host(self, host, overwrite=False, wildcard=False):
-        host_filename = os.path.join(self.certs_dir, host) + '.pem'
+        with self._lock:
+            host_filename = os.path.join(self.certs_dir, host) + '.pem'
 
-        if not overwrite and os.path.exists(host_filename):
-            self._file_created = False
+            if not overwrite and os.path.exists(host_filename):
+                self._file_created = False
+                return host_filename
+
+            self.generate_host_cert(host, self.cert, self.key, host_filename,
+                                    wildcard)
+
+            self._file_created = True
             return host_filename
-
-        self.generate_host_cert(host, self.cert, self.key, host_filename,
-                                wildcard)
-
-        self._file_created = True
-        return host_filename
 
     def get_wildcard_cert(self, cert_host):
         host_parts = cert_host.split('.', 1)

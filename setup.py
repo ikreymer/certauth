@@ -20,7 +20,7 @@ class PyTest(TestCommand):
 
 setup(
     name='certauth',
-    version='1.1.5',
+    version='1.1.6',
     author='Ilya Kreymer',
     author_email='ikreymer@gmail.com',
     license='MIT',
