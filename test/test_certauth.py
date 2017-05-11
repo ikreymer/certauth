@@ -24,32 +24,54 @@ def test_create_root():
     ret = main([TEST_CA_ROOT, '-c', 'Test Root Cert'])
     assert ret == 0
 
-def test_create_host_cert():
+def test_file_create_host_cert():
     ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com'])
     assert ret == 0
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
     assert os.path.isfile(certfile)
 
-def test_create_wildcard_host_cert_force_overwrite():
+def test_file_create_wildcard_host_cert_force_overwrite():
     ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '--hostname', 'example.com', '-w', '-f'])
     assert ret == 0
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
     assert os.path.isfile(certfile)
 
-def test_explicit_wildcard():
+def test_file_wildcard():
     ca = CertificateAuthority(TEST_CA_ROOT, 'Test CA', cert_cache=FileCache(TEST_CA_DIR))
     cert, key = ca.get_wildcard_cert('test.example.proxy')
     filename = os.path.join(TEST_CA_DIR, 'example.proxy.pem')
     assert os.path.isfile(filename)
     os.remove(filename)
 
-def test_create_already_exists():
+def test_file_create_already_exists():
     ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com', '-w'])
     assert ret == 1
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
     assert os.path.isfile(certfile)
     # remove now
     os.remove(certfile)
+
+def test_in_mem_cert():
+    cert_cache = {}
+    ca = CertificateAuthority(TEST_CA_ROOT, 'Test CA', cert_cache=cert_cache)
+    cert, key = ca.cert_for_host('test.example.proxy')
+    assert 'test.example.proxy' in cert_cache, cert_cache.keys()
+
+    cached_value = cert_cache['test.example.proxy']
+    cert2, key2 = ca.cert_for_host('test.example.proxy')
+    # assert underlying cache unchanged
+    assert cached_value == cert_cache['test.example.proxy']
+
+def test_in_mem_wildcard_cert():
+    cert_cache = {}
+    ca = CertificateAuthority(TEST_CA_ROOT, 'Test CA', cert_cache=cert_cache)
+    cert, key = ca.get_wildcard_cert('test.example.proxy')
+    assert 'example.proxy' in cert_cache, cert_cache.keys()
+
+    cached_value = cert_cache['example.proxy']
+    cert2, key2 = ca.cert_for_host('example.proxy')
+    # assert underlying cache unchanged
+    assert cached_value == cert_cache['example.proxy']
 
 def test_create_root_already_exists():
     ret = main([TEST_CA_ROOT])

@@ -45,7 +45,10 @@ class CertificateAuthority(object):
         assert(ca_file)
         self.ca_file = ca_file
 
-        self.cert_cache = cert_cache or dict()
+        if cert_cache is None:
+            cert_cache = {}
+
+        self.cert_cache = cert_cache
 
         assert(ca_name)
         self.ca_name = ca_name
@@ -70,7 +73,7 @@ class CertificateAuthority(object):
             self.cert, self.key = self.read_pem(buff)
 
     def cert_for_host(self, host, overwrite=False, wildcard=False):
-       cert_str = None
+        cert_str = None
 
         if not overwrite:
             cert_str = self.cert_cache.get(host)
