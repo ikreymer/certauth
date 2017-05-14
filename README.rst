@@ -147,5 +147,5 @@ It was also extended in `warcprox <https://github.com/internetarchive/warcprox>`
 
 The CA functionality was also reused in `pywb <https://github.com/ikreymer/pywb>`_ and finally factored out into this separate package for modularity.
 
-It is now also used by `wsgiprox <https://github.com/webrecorder/wsgiprox`_ to provide a generalized HTTPS proxy wrapper to any WSGI application.
+It is now also used by `wsgiprox <https://github.com/webrecorder/wsgiprox>`_ to provide a generalized HTTPS proxy wrapper to any WSGI application.
 
