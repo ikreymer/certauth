@@ -1,10 +1,11 @@
 import os
 import shutil
 
-from certauth.certauth import main, CertificateAuthority, FileCache
+from certauth.certauth import main, CertificateAuthority, FileCache, LRUCache, ROOT_CA
 
 import tempfile
 from OpenSSL import crypto
+from OpenSSL.SSL import FILETYPE_PEM
 import datetime
 import time
 
@@ -37,9 +38,10 @@ def test_file_create_wildcard_host_cert_force_overwrite():
     assert os.path.isfile(certfile)
 
 def test_file_wildcard():
-    ca = CertificateAuthority(TEST_CA_ROOT, 'Test CA', cert_cache=FileCache(TEST_CA_DIR))
-    cert, key = ca.get_wildcard_cert('test.example.proxy')
+    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR)
+    cert, key, cert_filename = ca.get_wildcard_cert('test.example.proxy', include_cache_key=True)
     filename = os.path.join(TEST_CA_DIR, 'example.proxy.pem')
+    assert cert_filename == filename
     assert os.path.isfile(filename)
     os.remove(filename)
 
@@ -53,18 +55,18 @@ def test_file_create_already_exists():
 
 def test_in_mem_cert():
     cert_cache = {}
-    ca = CertificateAuthority(TEST_CA_ROOT, 'Test CA', cert_cache=cert_cache)
-    cert, key = ca.cert_for_host('test.example.proxy')
+    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
+    res = ca.cert_for_host('test.example.proxy')
     assert 'test.example.proxy' in cert_cache, cert_cache.keys()
 
     cached_value = cert_cache['test.example.proxy']
-    cert2, key2 = ca.cert_for_host('test.example.proxy')
+    res = ca.cert_for_host('test.example.proxy')
     # assert underlying cache unchanged
     assert cached_value == cert_cache['test.example.proxy']
 
 def test_in_mem_wildcard_cert():
     cert_cache = {}
-    ca = CertificateAuthority(TEST_CA_ROOT, 'Test CA', cert_cache=cert_cache)
+    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
     cert, key = ca.get_wildcard_cert('test.example.proxy')
     assert 'example.proxy' in cert_cache, cert_cache.keys()
 
@@ -86,20 +88,30 @@ def test_create_root_subdir():
 
     ca_file = os.path.join(subdir, 'certauth_test_ca.pem')
 
-    ca = CertificateAuthority(ca_file, 'Test CA',
-                              cert_not_before=-60 * 60,
-                              cert_not_after=60 * 60 * 24 * 3)
+    certs_dir = os.path.join(subdir, 'certs')
+
+    ca = CertificateAuthority('Test CA', ca_file, certs_dir)
 
     assert os.path.isdir(subdir)
     assert os.path.isfile(ca_file)
+    assert os.path.isdir(certs_dir)
 
-    buff = ca.get_root_PKCS12()
-    assert len(buff) > 0
+    assert ca.get_root_pem_filename() == ca_file
+
+def test_custom_not_before_not_after():
+    ca = CertificateAuthority('Test Custom CA', TEST_CA_ROOT,
+                              cert_not_before=-60 * 60,
+                              cert_not_after=60 * 60 * 24 * 3)
+
+    # check PKCS12
+    buff_pk12 = ca.get_root_PKCS12()
+    assert len(buff_pk12) > 0
+
+    cert = crypto.load_pkcs12(buff_pk12).get_certificate()
 
     expected_not_before = datetime.datetime.utcnow() - datetime.timedelta(seconds=60 * 60)
     expected_not_after = datetime.datetime.utcnow() + datetime.timedelta(seconds=60 * 60 * 24 * 3)
 
-    cert = crypto.load_pkcs12(buff).get_certificate()
 
     actual_not_before = datetime.datetime.strptime(
             cert.get_notBefore().decode('ascii'), '%Y%m%d%H%M%SZ')
@@ -109,4 +121,47 @@ def test_create_root_subdir():
     time.mktime(expected_not_before.utctimetuple())
     assert abs((time.mktime(actual_not_before.utctimetuple()) - time.mktime(expected_not_before.utctimetuple()))) < 10
     assert abs((time.mktime(actual_not_after.utctimetuple()) - time.mktime(expected_not_after.utctimetuple()))) < 10
+
+
+def test_ca_cert_in_mem():
+    root_cert_dict = {}
+
+    ca = CertificateAuthority('Test CA', root_cert_dict, 10)
+
+    # check PEM
+    buff_pem = ca.get_root_pem()
+    assert len(buff_pem) > 0
+
+    # PEM stored in root_cert_dict
+    assert root_cert_dict[ROOT_CA] == buff_pem
+
+    cert_pem = crypto.load_certificate(FILETYPE_PEM, buff_pem)
+
+    # check PKCS12
+    buff_pk12 = ca.get_root_PKCS12()
+    assert len(buff_pk12) > 0
+
+    cert_pk12 = crypto.load_pkcs12(buff_pk12).get_certificate()
+
+
+def test_ca_lru_cache():
+    lru = LRUCache(max_size=2)
+    ca = CertificateAuthority('Test CA LRU Cache', TEST_CA_ROOT, lru)
+
+    res = ca.cert_for_host('example.com')
+    assert 'example.com' in lru
+    assert len(lru) == 1
+
+    res = ca.cert_for_host('ABC.example.com')
+    assert 'ABC.example.com' in lru
+    assert 'example.com' in lru
+    assert len(lru) == 2
+
+    res = ca.cert_for_host('XYZ.example.com')
+    assert 'XYZ.example.com' in lru
+    assert 'ABC.example.com' in lru
+    assert len(lru) == 2
+
+    assert 'example.com' not in lru
+
 

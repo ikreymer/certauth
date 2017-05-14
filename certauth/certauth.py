@@ -9,6 +9,12 @@ from OpenSSL.SSL import FILETYPE_PEM
 import random
 from argparse import ArgumentParser
 
+try:
+    from collections import OrderedDict
+except ImportError:  #pragma: no cover
+    # py2.6 only!
+    from ordereddict import OrderedDict
+
 import threading
 
 # =================================================================
@@ -23,6 +29,8 @@ CERT_NAME = 'certauth sample CA'
 
 DEF_HASH_FUNC = 'sha256'
 
+ROOT_CA = '!!root_ca'
+
 
 # =================================================================
 class CertificateAuthority(object):
@@ -36,74 +44,114 @@ class CertificateAuthority(object):
     in specified certs_dir and reused if previously created.
     """
 
-    def __init__(self, ca_file, ca_name,
+    def __init__(self, ca_name,
+                 ca_file_cache,
                  cert_cache=None,
-                 overwrite=False,
                  cert_not_before=0,
-                 cert_not_after=CERT_NOT_AFTER):
+                 cert_not_after=CERT_NOT_AFTER,
+                 overwrite=False):
 
-        assert(ca_file)
-        self.ca_file = ca_file
+        if isinstance(ca_file_cache, str):
+            self.ca_file_cache = RootCACache(ca_file_cache)
+        else:
+            self.ca_file_cache = ca_file_cache
 
-        if cert_cache is None:
-            cert_cache = {}
+        if isinstance(cert_cache, str):
+            self.cert_cache = FileCache(cert_cache)
+        elif isinstance(cert_cache, int):
+            self.cert_cache = LRUCache(max_size=cert_cache)
+        elif cert_cache is None:
+            self.cert_cache = LRUCache(max_size=100)
+        else:
+            self.cert_cache = cert_cache
 
-        self.cert_cache = cert_cache
-
-        assert(ca_name)
         self.ca_name = ca_name
-
-        self._file_created = False
 
         self.cert_not_before = cert_not_before
         self.cert_not_after = cert_not_after
 
-        if not os.path.exists(os.path.dirname(ca_file)):
-            os.makedirs(os.path.dirname(ca_file))
+        res = self.load_root_ca_cert(overwrite=overwrite)
+        self.ca_cert, self.ca_key = res
 
-        # if file doesn't exist or overwrite is true
-        # create new root cert
-        if (overwrite or not os.path.isfile(ca_file)):
-            self.cert, self.key = self.generate_ca_root(ca_file, ca_name)
-            self._file_created = True
-            return
+    def load_root_ca_cert(self, overwrite=False):
+        cert_str = None
 
-        # read previously created root cert
-        with open(ca_file, 'rb') as buff:
-            self.cert, self.key = self.read_pem(buff)
+        if not overwrite:
+            cert_str = self.ca_file_cache.get(ROOT_CA)
 
-    def cert_for_host(self, host, overwrite=False, wildcard=False):
+        # if cached, just read pem
+        if cert_str:
+            cert, key = self.read_pem(BytesIO(cert_str))
+
+        else:
+            cert, key = self.generate_ca_root(self.ca_name)
+
+            # Write cert + key
+            buff = BytesIO()
+            self.write_pem(buff, cert, key)
+            cert_str = buff.getvalue()
+
+            # store cert in cache
+            self.ca_file_cache[ROOT_CA] = cert_str
+
+        return cert, key
+
+    def cert_for_host(self, host, overwrite=False,
+                                   wildcard=False,
+                                   include_cache_key=False):
         cert_str = None
 
         if not overwrite:
             cert_str = self.cert_cache.get(host)
 
+        # if cached, just read pem
         if cert_str:
             cert, key = self.read_pem(BytesIO(cert_str))
+
+        else:
+            # if not cached, generate new root or host cert
+            cert, key = self.generate_host_cert(host,
+                                                self.ca_cert,
+                                                self.ca_key,
+                                                wildcard)
+
+            # Write cert + key
+            buff = BytesIO()
+            self.write_pem(buff, cert, key)
+            cert_str = buff.getvalue()
+
+            # store cert in cache
+            self.cert_cache[host] = cert_str
+
+        if not include_cache_key:
             return cert, key
 
-        cert_str, cert, key = self.generate_host_cert(host, self.cert, self.key, wildcard)
+        else:
+            cache_key = host
+            if hasattr(self.cert_cache, 'key_for_host'):
+                cache_key = self.cert_cache.key_for_host(host)
 
-        self.cert_cache[host] = cert_str
-        self._file_created = True
+            return cert, key, cache_key
 
-        return cert, key
-
-    def get_wildcard_cert(self, cert_host):
+    def get_wildcard_cert(self, cert_host, **kwargs):
         host_parts = cert_host.split('.', 1)
         if len(host_parts) == 2 and '.' in host_parts[1]:
             cert_host = host_parts[1]
 
-        cert_key = self.cert_for_host(cert_host,
-                                      wildcard=True)
-
-        return cert_key
+        kwargs['wildcard'] = True
+        return self.cert_for_host(cert_host, **kwargs)
 
     def get_root_PKCS12(self):
         p12 = crypto.PKCS12()
-        p12.set_certificate(self.cert)
-        p12.set_privatekey(self.key)
+        p12.set_certificate(self.ca_cert)
+        p12.set_privatekey(self.ca_key)
         return p12.export()
+
+    def get_root_pem(self):
+        return self.ca_file_cache.get(ROOT_CA)
+
+    def get_root_pem_filename(self):
+        return self.ca_file_cache.ca_file
 
     def _make_cert(self, certname):
         cert = crypto.X509()
@@ -115,7 +163,7 @@ class CertificateAuthority(object):
         cert.gmtime_adj_notAfter(self.cert_not_after)
         return cert
 
-    def generate_ca_root(self, ca_file, ca_name, hash_func=DEF_HASH_FUNC):
+    def generate_ca_root(self, ca_name, hash_func=DEF_HASH_FUNC):
         # Generate key
         key = crypto.PKey()
         key.generate_key(crypto.TYPE_RSA, 2048)
@@ -140,10 +188,6 @@ class CertificateAuthority(object):
                                  subject=cert),
             ])
         cert.sign(key, hash_func)
-
-        # Write cert + key
-        with open(ca_file, 'w+b') as buff:
-            self.write_pem(buff, cert, key)
 
         return cert, key
 
@@ -181,11 +225,7 @@ class CertificateAuthority(object):
                                      alt_hosts)])
 
         cert.sign(root_key, hash_func)
-
-        # Write cert + key
-        buff = BytesIO()
-        self.write_pem(buff, cert, key)
-        return buff.getvalue(), cert, key
+        return cert, key
 
     def write_pem(self, buff, cert, key):
         buff.write(crypto.dump_privatekey(FILETYPE_PEM, key))
@@ -203,23 +243,51 @@ class FileCache(object):
     def __init__(self, certs_dir):
         self._lock = threading.Lock()
         self.certs_dir = certs_dir
+        self.modified = False
 
-    def file_for_host(self, host):
+        if not os.path.exists(certs_dir):
+            os.makedirs(certs_dir)
+
+    def key_for_host(self, host):
         return os.path.join(self.certs_dir, host) + '.pem'
 
     def __setitem__(self, host, cert_string):
-        filename = self.file_for_host(host)
+        filename = self.key_for_host(host)
         with self._lock:
             with open(filename, 'wb') as fh:
                 fh.write(cert_string)
+                self.modified = True
 
     def get(self, host):
-        filename = self.file_for_host(host)
+        filename = self.key_for_host(host)
         try:
             with open(filename, 'rb') as fh:
                 return fh.read()
         except:
             return b''
+
+
+# =================================================================
+class RootCACache(FileCache):
+    def __init__(self, ca_file):
+        self.ca_file = ca_file
+        ca_dir = os.path.dirname(ca_file)
+        super(RootCACache, self).__init__(ca_dir)
+
+    def key_for_host(self, host=None):
+        return self.ca_file
+
+
+# =================================================================
+class LRUCache(OrderedDict):
+    def __init__(self, max_size):
+        super(LRUCache, self).__init__()
+        self.max_size = max_size
+
+    def __setitem__(self, host, cert_string):
+        super(LRUCache, self).__setitem__(host, cert_string)
+        if len(self) > self.max_size:
+            self.popitem(last=False)
 
 
 # =================================================================
@@ -257,14 +325,17 @@ def main(args=None):
     else:
         overwrite = False
 
-    ca = CertificateAuthority(ca_file=root_cert,
-                              cert_cache=FileCache(r.certs_dir),
-                              ca_name=r.certname,
+    cert_cache = FileCache(r.certs_dir)
+    ca_file_cache = RootCACache(root_cert)
+
+    ca = CertificateAuthority(ca_name=r.certname,
+                              ca_file_cache=ca_file_cache,
+                              cert_cache=cert_cache,
                               overwrite=overwrite)
 
     # Just creating the root cert
     if not hostname:
-        if ca._file_created:
+        if ca_file_cache.modified:
             print('Created new root cert: "' + root_cert + '"')
             return 0
         else:
@@ -274,10 +345,10 @@ def main(args=None):
 
     # Sign a certificate for a given host
     overwrite = r.force
-    host_cert_key = ca.cert_for_host(hostname,
-                                     overwrite, wildcard)
+    ca.cert_for_host(hostname, overwrite=overwrite,
+                                wildcard=wildcard)
 
-    if ca._file_created:
+    if cert_cache.modified:
         print('Created new cert "' + hostname +
               '" signed by root cert ' +
               root_cert)
