@@ -9,16 +9,16 @@ Certificate Authority Certificate Maker Tools
 This package provides a small library, built on top of ``pyOpenSSL``, which allows for creating a custom certificate authority certificate,
 and genereating on-demand dynamic host certs using that CA certificate.
 
-It is most useful for use with a man-in-the-middle HTTPS proxy, for example, for archiving or playing back web content.
+It is most useful for use with a man-in-the-middle HTTPS proxy, for example, for recording or replaying web content.
 
-Certificates created by using this module should be used with caution.
+Trusting the CA created by this tool should be used with caution in a controlled setting to avoid security risks.
 
 
-``CertificateAuthority`` API
+CertificateAuthority API
 ============================
 
-The ``CertificateAuthority`` class provides can be used to manage a root CA and generate dynamic host certificates suitable
-for use with the native Python ``ssl`` library as well as ``pyOpenSSL`` ``SSL`` module.
+The ``CertificateAuthority`` class provides an interface to manage a root CA and generate dynamic host certificates suitable
+for use with the native Python ``ssl`` library as well as pyOpenSSL ``SSL`` module.
 
 The class provides several options for storing the root CA and generated host CAs.
 
@@ -35,7 +35,7 @@ are placed in ``/tmp/certs``. The ``filename`` returned would be ``/tmp/certs/ex
 
 This filename can then be used with the Python `ssl.load_cert_chain(certfile) <https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_cert_chain>`_ command.
 
-Note that the dynamically created certs are not automatically deleted and remains up to the caller to clean up occasionally.
+Note that the dynamically created certs are never deleted by ``certauth``, it remains up to the user to handle cleanup occasionally if desired.
 
 
 In-memory Certificate Cache
@@ -59,7 +59,7 @@ The ``cert`` and ``key`` can then be used with `OpenSSL.SSL.Context.use_certific
 Custom Cache
 ~~~~~~~~~~~~
 
-``certauth`` also supports custom cache implementation which stores and retrieves per-host certificates can also be provided:
+A custom cache implementations which stores and retrieves per-host certificates can also be provided:
 
 .. code:: python
    ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache=CustomCache())
