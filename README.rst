@@ -1,4 +1,4 @@
-Certificate Authority Cert Maker Tools v1.1.4
+Certificate Authority Certificate Maker Tools
 =============================================
 
 .. image:: https://travis-ci.org/ikreymer/certauth.svg?branch=master
@@ -13,18 +13,92 @@ It is most useful for use with a man-in-the-middle HTTPS proxy, for example, for
 
 Certificates created by using this module should be used with caution.
 
-History
--------
 
-The CertificateAuthority functionality was originally found in the man-in-the-middle proxy `pymiproxy <https://github.com/allfro/pymiproxy>`_ by Nadeem Douba.
+``CertificateAuthority`` API
+============================
 
-It was also extended in `warcprox <https://github.com/internetarchive/warcprox>`_ by `Noah Levitt <https://github.com/nlevitt>`_ of Internet Archive.
+The ``CertificateAuthority`` class provides can be used to manage a root CA and generate dynamic host certificates suitable
+for use with the native Python ``ssl`` library as well as ``pyOpenSSL`` ``SSL`` module.
 
-The CA functionality was also reused in `pywb <https://github.com/ikreymer/pywb>`_ and finally factored out into this separate package for modularity.
+The class provides several options for storing the root CA and generated host CAs.
 
 
-Usage Examples
---------------
+File-based Certificate Cache
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+   ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache='/tmp/certs')
+   cert, key, filename = ca.cert_for_host('example.com', include_cache_key=True)
+
+In this configuration, the root CA is stored at ``my-ca.pem`` and dynamically generated certs
+are placed in ``/tmp/certs``. The ``filename`` returned would be ``/tmp/certs/example.com.pem`` in this example.
+
+This filename can then be used with the Python `ssl.load_cert_chain(certfile) <https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_cert_chain>`_ command.
+
+Note that the dynamically created certs are not automatically deleted and remains up to the caller to clean up occasionally.
+
+
+In-memory Certificate Cache
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+   ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache=50)
+   cert, key = ca.cert_for_host('example.com')
+   
+This configuration stores the root CA at ``my-ca.pem`` but uses an in-memory certificate cache for dynamically created certs. 
+These certs are stored in an LRU cache, configured to keep at most 50 certs.
+
+The ``cert`` and ``key`` can then be used with `OpenSSL.SSL.Context.use_certificate <http://www.pyopenssl.org/en/stable/api/ssl.html#OpenSSL.SSL.Context.use_certificate>`_
+
+.. code:: python
+        context = SSl.Context(...)
+        context.use_privatekey(key)
+        context.use_certificate(cert)
+
+
+Custom Cache
+~~~~~~~~~~~~
+
+``certauth`` also supports custom cache implementation which stores and retrieves per-host certificates can also be provided:
+
+.. code:: python
+   ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache=CustomCache())
+   cert, key = ca.cert_for_host('example.com')
+   
+   class CustomCache:
+       def __setitem__(self, host, cert_string):
+          # store cert_string for host
+          
+       def get(self, host):
+          # return cached cert_string, if available
+          cert_string = ...
+          return cert_string
+
+
+Wildcard Certs
+~~~~~~~~~~~~~~
+
+To reduce the number of certs generated, it is convenient to generate wildcard certs.
+
+.. code:: python
+
+   cert, key = ca.cert_for_host('example.com', wildcard=True)
+
+This will generate a cert for ``*.example.com``.
+
+To automatically generate a wildcard cert for parent domain, use:
+
+.. code:: python
+
+   cert, key = ca.get_wildcard_cert('test.example.com')
+
+This will also generate a cert for ``*.example.com``
+
+
+CLI Usage Examples
+==================
+
+``certauth`` also includes a simple command-line API for certificate creation and management.
 
 ::
 
@@ -62,3 +136,16 @@ The cert for ``example.com`` will be created as ``certs_dir/example.com.pem``.
 If it already exists, it will not be overwritten (unless ``-f`` option is used).
 
 The ``-w`` option can be used to create a wildcard cert which has subject alternate names (SAN) for ``example.com`` and ``*.example.com``
+
+
+History
+=======
+
+The CertificateAuthority functionality has evolved from certificate management originally found in the man-in-the-middle proxy `pymiproxy <https://github.com/allfro/pymiproxy>`_ by Nadeem Douba.
+
+It was also extended in `warcprox <https://github.com/internetarchive/warcprox>`_ by `Noah Levitt <https://github.com/nlevitt>`_ of Internet Archive.
+
+The CA functionality was also reused in `pywb <https://github.com/ikreymer/pywb>`_ and finally factored out into this separate package for modularity.
+
+It is now also used by `wsgiprox <https://github.com/webrecorder/wsgiprox`_ to provide a generalized HTTPS proxy wrapper to any WSGI application.
+
