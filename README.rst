@@ -27,6 +27,7 @@ File-based Certificate Cache
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python
+
    ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache='/tmp/certs')
    cert, key, filename = ca.cert_for_host('example.com', include_cache_key=True)
 
@@ -42,6 +43,7 @@ In-memory Certificate Cache
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python
+
    ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache=50)
    cert, key = ca.cert_for_host('example.com')
    
@@ -51,6 +53,7 @@ These certs are stored in an LRU cache, configured to keep at most 50 certs.
 The ``cert`` and ``key`` can then be used with `OpenSSL.SSL.Context.use_certificate <http://www.pyopenssl.org/en/stable/api/ssl.html#OpenSSL.SSL.Context.use_certificate>`_
 
 .. code:: python
+
         context = SSl.Context(...)
         context.use_privatekey(key)
         context.use_certificate(cert)
@@ -62,6 +65,7 @@ Custom Cache
 A custom cache implementations which stores and retrieves per-host certificates can also be provided:
 
 .. code:: python
+
    ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache=CustomCache())
    cert, key = ca.cert_for_host('example.com')
    
