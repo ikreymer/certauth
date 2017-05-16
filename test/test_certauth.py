@@ -75,7 +75,7 @@ def test_in_mem_cert():
 def test_in_mem_wildcard_cert():
     cert_cache = {}
     ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
-    cert, key = ca.load_cert('test.example.proxy', wildcard=True)
+    cert, key = ca.load_cert('test.example.proxy', wildcard=True, wildcard_use_parent=True)
     assert 'example.proxy' in cert_cache, cert_cache.keys()
 
     cached_value = cert_cache['example.proxy']

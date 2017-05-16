@@ -98,7 +98,7 @@ class CertificateAuthority(object):
 
     def load_cert(self, host, overwrite=False,
                               wildcard=False,
-                              wildcard_use_parent=True,
+                              wildcard_use_parent=False,
                               include_cache_key=False):
 
         if wildcard and wildcard_use_parent:
