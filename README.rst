@@ -29,7 +29,7 @@ File-based Certificate Cache
 .. code:: python
 
    ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache='/tmp/certs')
-   cert, key, filename = ca.cert_for_host('example.com', include_cache_key=True)
+   filename = ca.cert_for_host('example.com')
 
 In this configuration, the root CA is stored at ``my-ca.pem`` and dynamically generated certs
 are placed in ``/tmp/certs``. The ``filename`` returned would be ``/tmp/certs/example.com.pem`` in this example.
@@ -45,7 +45,7 @@ In-memory Certificate Cache
 .. code:: python
 
    ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache=50)
-   cert, key = ca.cert_for_host('example.com')
+   cert, key = ca.load_cert('example.com')
    
 This configuration stores the root CA at ``my-ca.pem`` but uses an in-memory certificate cache for dynamically created certs. 
 These certs are stored in an LRU cache, configured to keep at most 50 certs.
@@ -67,7 +67,7 @@ A custom cache implementations which stores and retrieves per-host certificates 
 .. code:: python
 
    ca = CertificateAuthority('My Custom CA', 'my-ca.pem', cert_cache=CustomCache())
-   cert, key = ca.cert_for_host('example.com')
+   cert, key = ca.load_cert('example.com')
    
    class CustomCache:
        def __setitem__(self, host, cert_string):
@@ -86,7 +86,7 @@ To reduce the number of certs generated, it is convenient to generate wildcard c
 
 .. code:: python
 
-   cert, key = ca.cert_for_host('example.com', wildcard=True)
+   cert, key = ca.load_cert('example.com', wildcard=True)
 
 This will generate a cert for ``*.example.com``.
 
@@ -94,7 +94,7 @@ To automatically generate a wildcard cert for parent domain, use:
 
 .. code:: python
 
-   cert, key = ca.get_wildcard_cert('test.example.com')
+   cert, key = ca.load_cert('test.example.com', wildcard=True, wildcard_for_parent=True)
 
 This will also generate a cert for ``*.example.com``
 
