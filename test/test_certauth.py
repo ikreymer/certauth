@@ -39,8 +39,16 @@ def test_file_create_wildcard_host_cert_force_overwrite():
 
 def test_file_wildcard():
     ca = CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR)
-    cert, key, cert_filename = ca.get_wildcard_cert('test.example.proxy', include_cache_key=True)
+    cert_filename = ca.get_wildcard_cert('test.example.proxy')
     filename = os.path.join(TEST_CA_DIR, 'example.proxy.pem')
+    assert cert_filename == filename
+    assert os.path.isfile(filename)
+    os.remove(filename)
+
+def test_file_non_wildcard():
+    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR)
+    cert_filename = ca.cert_for_host('test2.example.proxy')
+    filename = os.path.join(TEST_CA_DIR, 'test2.example.proxy.pem')
     assert cert_filename == filename
     assert os.path.isfile(filename)
     os.remove(filename)
@@ -56,22 +64,22 @@ def test_file_create_already_exists():
 def test_in_mem_cert():
     cert_cache = {}
     ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
-    res = ca.cert_for_host('test.example.proxy')
+    res = ca.load_cert('test.example.proxy')
     assert 'test.example.proxy' in cert_cache, cert_cache.keys()
 
     cached_value = cert_cache['test.example.proxy']
-    res = ca.cert_for_host('test.example.proxy')
+    res = ca.load_cert('test.example.proxy')
     # assert underlying cache unchanged
     assert cached_value == cert_cache['test.example.proxy']
 
 def test_in_mem_wildcard_cert():
     cert_cache = {}
     ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
-    cert, key = ca.get_wildcard_cert('test.example.proxy')
+    cert, key = ca.load_cert('test.example.proxy', wildcard=True)
     assert 'example.proxy' in cert_cache, cert_cache.keys()
 
     cached_value = cert_cache['example.proxy']
-    cert2, key2 = ca.cert_for_host('example.proxy')
+    cert2, key2 = ca.load_cert('example.proxy')
     # assert underlying cache unchanged
     assert cached_value == cert_cache['example.proxy']
 
@@ -148,16 +156,16 @@ def test_ca_lru_cache():
     lru = LRUCache(max_size=2)
     ca = CertificateAuthority('Test CA LRU Cache', TEST_CA_ROOT, lru)
 
-    res = ca.cert_for_host('example.com')
+    res = ca.load_cert('example.com')
     assert 'example.com' in lru
     assert len(lru) == 1
 
-    res = ca.cert_for_host('ABC.example.com')
+    res = ca.load_cert('ABC.example.com')
     assert 'ABC.example.com' in lru
     assert 'example.com' in lru
     assert len(lru) == 2
 
-    res = ca.cert_for_host('XYZ.example.com')
+    res = ca.load_cert('XYZ.example.com')
     assert 'XYZ.example.com' in lru
     assert 'ABC.example.com' in lru
     assert len(lru) == 2

@@ -96,9 +96,16 @@ class CertificateAuthority(object):
 
         return cert, key
 
-    def cert_for_host(self, host, overwrite=False,
-                                   wildcard=False,
-                                   include_cache_key=False):
+    def load_cert(self, host, overwrite=False,
+                              wildcard=False,
+                              wildcard_use_parent=True,
+                              include_cache_key=False):
+
+        if wildcard and wildcard_use_parent:
+            host_parts = host.split('.', 1)
+            if len(host_parts) == 2 and '.' in host_parts[1]:
+                host = host_parts[1]
+
         cert_str = None
 
         if not overwrite:
@@ -133,13 +140,25 @@ class CertificateAuthority(object):
 
             return cert, key, cache_key
 
-    def get_wildcard_cert(self, cert_host, **kwargs):
-        host_parts = cert_host.split('.', 1)
-        if len(host_parts) == 2 and '.' in host_parts[1]:
-            cert_host = host_parts[1]
+    def cert_for_host(self, host, overwrite=False,
+                                  wildcard=False):
 
-        kwargs['wildcard'] = True
-        return self.cert_for_host(cert_host, **kwargs)
+        res = self.load_cert(host, overwrite=overwrite,
+                                   wildcard=wildcard,
+                                   wildcard_use_parent=False,
+                                   include_cache_key=True)
+
+        return res[2]
+
+
+
+    def get_wildcard_cert(self, cert_host, overwrite=False):
+        res = self.load_cert(cert_host, overwrite=overwrite,
+                                        wildcard=True,
+                                        wildcard_use_parent=True,
+                                        include_cache_key=True)
+
+        return res[2]
 
     def get_root_PKCS12(self):
         p12 = crypto.PKCS12()
@@ -345,8 +364,9 @@ def main(args=None):
 
     # Sign a certificate for a given host
     overwrite = r.force
-    ca.cert_for_host(hostname, overwrite=overwrite,
-                                wildcard=wildcard)
+    ca.load_cert(hostname, overwrite=overwrite,
+                           wildcard=wildcard,
+                           wildcard_use_parent=False)
 
     if cert_cache.modified:
         print('Created new cert "' + hostname +
