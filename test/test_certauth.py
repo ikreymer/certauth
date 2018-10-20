@@ -111,7 +111,7 @@ def test_file_ip_non_wildcard(ca):
 
 def test_file_ipv6_wildcard_ignore(ca):
     cert_filename = ca.get_wildcard_cert('2001:0db8:85a3:0000:0000:8a2e:0370:7334')
-    filename = os.path.join(TEST_CA_DIR, '2001:0db8:85a3:0000:0000:8a2e:0370:7334.pem')
+    filename = os.path.join(TEST_CA_DIR, '2001-0db8-85a3-0000-0000-8a2e-0370-7334.pem')
     assert cert_filename == filename
 
     verify_san(ca, filename, 'IP Address:2001:DB8:85A3:0:0:8A2E:370:7334\n, DNS:2001:0db8:85a3:0000:0000:8a2e:0370:7334')

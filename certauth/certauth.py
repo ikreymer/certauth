@@ -294,6 +294,7 @@ class FileCache(object):
             os.makedirs(certs_dir)
 
     def key_for_host(self, host):
+        host = host.replace(':', '-')
         return os.path.join(self.certs_dir, host) + '.pem'
 
     def __setitem__(self, host, cert_string):
