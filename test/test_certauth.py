@@ -73,6 +73,24 @@ def test_file_wildcard(ca):
 
     os.remove(filename)
 
+def test_file_wildcard_no_subdomain(ca):
+    cert_filename = ca.get_wildcard_cert('example.proxy')
+    filename = os.path.join(TEST_CA_DIR, 'example.proxy.pem')
+    assert cert_filename == filename
+
+    verify_san(ca, filename, 'DNS:example.proxy, DNS:*.example.proxy')
+
+    os.remove(filename)
+
+def test_file_wildcard_subdomains(ca):
+    cert_filename = ca.get_wildcard_cert('a.b.c.test.example.com')
+    filename = os.path.join(TEST_CA_DIR, 'b.c.test.example.com.pem')
+    assert cert_filename == filename
+
+    verify_san(ca, filename, 'DNS:b.c.test.example.com, DNS:*.b.c.test.example.com')
+
+    os.remove(filename)
+
 def test_file_non_wildcard(ca):
     cert_filename = ca.cert_for_host('test2.example.proxy')
     filename = os.path.join(TEST_CA_DIR, 'test2.example.proxy.pem')
@@ -113,7 +131,7 @@ def test_file_create_already_exists(ca):
 
 def test_in_mem_cert():
     cert_cache = {}
-    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
+    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache, overwrite=True)
     res = ca.load_cert('test.example.proxy')
     assert 'test.example.proxy' in cert_cache, cert_cache.keys()
 

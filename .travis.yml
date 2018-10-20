@@ -17,11 +17,11 @@ install:
   - pip install -U pip setuptools
   - if [[ $TRAVIS_PYTHON_VERSION == "2.6" ]]; then pip install ordereddict; fi
   - python setup.py install
-  - pip install coverage pytest-cov coveralls
+  - pip install coverage pytest-cov codecov
 
 script:
   - python setup.py test
 
 after_success:
-  - coveralls
+  - codecov
 

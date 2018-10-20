@@ -102,7 +102,7 @@ class CertificateAuthority(object):
     def is_host_ip(self, host):
         try:
             # if py2.7, need to decode to unicode str
-            if hasattr(host, 'decode'):
+            if hasattr(host, 'decode'):  #pragma: no cover
                 host = host.decode('ascii')
 
             ipaddress.ip_address(host)

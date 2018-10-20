@@ -20,11 +20,11 @@ environment:
 
 install:        
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
-  - "pip install --disable-pip-version-check --user --upgrade pip"
+  - "python -m pip install --upgrade pip"
   - "pip install -U setuptools"
   - cmd: 'IF "%ORDICT%" == "1" (pip install ordereddict)'
   - "pip install pyopenssl"
-  - "pip install coverage pytest-cov coveralls"
+  - "pip install coverage pytest-cov codecov"
 
 build_script:
   - "python setup.py install"
