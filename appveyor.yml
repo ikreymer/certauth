@@ -3,14 +3,8 @@ environment:
     CMD_IN_ENV: "cmd /E:ON /V:ON /C obvci_appveyor_python_build_env.cmd"
 
   matrix:
-    - PYTHON: "C:\\Python26"
-      ORDICT: "1"
-    - PYTHON: "C:\\Python26-x64"
-      ORDICT: "1"
     - PYTHON: "C:\\Python27"
     - PYTHON: "C:\\Python27-x64"
-    - PYTHON: "C:\\Python33"
-    - PYTHON: "C:\\Python33-x64"
     - PYTHON: "C:\\Python34"
     - PYTHON: "C:\\Python34-x64"
     - PYTHON: "C:\\Python35"
@@ -25,7 +19,6 @@ install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
   - "python -m pip install --upgrade pip"
   - "pip install -U setuptools"
-  - cmd: 'IF "%ORDICT%" == "1" (pip install ordereddict)'
   - "pip install pyopenssl"
   - "pip install coverage pytest-cov codecov"
 

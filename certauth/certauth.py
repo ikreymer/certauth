@@ -12,11 +12,7 @@ import ipaddress
 
 from argparse import ArgumentParser
 
-try:
-    from collections import OrderedDict
-except ImportError:  #pragma: no cover
-    # py2.6 only!
-    from ordereddict import OrderedDict
+from collections import OrderedDict
 
 import threading
 
