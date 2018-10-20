@@ -9,6 +9,14 @@ from OpenSSL.SSL import FILETYPE_PEM
 import datetime
 import time
 
+import pytest
+
+
+@pytest.fixture
+def ca():
+    return CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR)
+
+
 def setup_module():
     global TEST_CA_DIR
     TEST_CA_DIR = tempfile.mkdtemp()
@@ -21,43 +29,85 @@ def teardown_module():
     assert not os.path.isdir(TEST_CA_DIR)
     assert not os.path.isfile(TEST_CA_ROOT)
 
+
+def verify_cert_san(cert, san_string):
+    assert cert.get_extension_count() == 1
+    assert str(cert.get_extension(0)) == san_string
+
+    #if 'IP Address' in san_string:
+    #    print(crypto.dump_certificate(crypto.FILETYPE_TEXT, cert).decode('utf-8'))
+    #    assert False
+
+def verify_san(ca, filename, san_string):
+    assert os.path.isfile(filename)
+    with open(filename, 'rb') as fh:
+        cert, key = ca.read_pem(fh)
+
+    verify_cert_san(cert, san_string)
+
+
 def test_create_root():
     ret = main([TEST_CA_ROOT, '-c', 'Test Root Cert'])
     assert ret == 0
 
-def test_file_create_host_cert():
+def test_file_create_host_cert(ca):
     ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com'])
     assert ret == 0
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
-    assert os.path.isfile(certfile)
 
-def test_file_create_wildcard_host_cert_force_overwrite():
+    verify_san(ca, certfile, 'DNS:example.com')
+
+def test_file_create_wildcard_host_cert_force_overwrite(ca):
     ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '--hostname', 'example.com', '-w', '-f'])
     assert ret == 0
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
-    assert os.path.isfile(certfile)
 
-def test_file_wildcard():
-    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR)
+    verify_san(ca, certfile, 'DNS:example.com, DNS:*.example.com')
+
+def test_file_wildcard(ca):
     cert_filename = ca.get_wildcard_cert('test.example.proxy')
     filename = os.path.join(TEST_CA_DIR, 'example.proxy.pem')
     assert cert_filename == filename
-    assert os.path.isfile(filename)
+
+    verify_san(ca, filename, 'DNS:example.proxy, DNS:*.example.proxy')
+
     os.remove(filename)
 
-def test_file_non_wildcard():
-    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR)
+def test_file_non_wildcard(ca):
     cert_filename = ca.cert_for_host('test2.example.proxy')
     filename = os.path.join(TEST_CA_DIR, 'test2.example.proxy.pem')
     assert cert_filename == filename
-    assert os.path.isfile(filename)
+
+    verify_san(ca, filename, 'DNS:test2.example.proxy')
+
     os.remove(filename)
 
-def test_file_create_already_exists():
+def test_file_ip_non_wildcard(ca):
+    cert_filename = ca.cert_for_host('192.168.0.2')
+    filename = os.path.join(TEST_CA_DIR, '192.168.0.2.pem')
+    assert cert_filename == filename
+
+    verify_san(ca, filename, 'IP Address:192.168.0.2, DNS:192.168.0.2')
+
+    os.remove(filename)
+
+def test_file_ipv6_wildcard_ignore(ca):
+    cert_filename = ca.get_wildcard_cert('2001:0db8:85a3:0000:0000:8a2e:0370:7334')
+    filename = os.path.join(TEST_CA_DIR, '2001:0db8:85a3:0000:0000:8a2e:0370:7334.pem')
+    assert cert_filename == filename
+
+    verify_san(ca, filename, 'IP Address:2001:DB8:85A3:0:0:8A2E:370:7334\n, DNS:2001:0db8:85a3:0000:0000:8a2e:0370:7334')
+
+    os.remove(filename)
+
+def test_file_create_already_exists(ca):
     ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com', '-w'])
     assert ret == 1
     certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
-    assert os.path.isfile(certfile)
+
+    # from previous run
+    verify_san(ca, certfile, 'DNS:example.com, DNS:*.example.com')
+
     # remove now
     os.remove(certfile)
 
@@ -68,11 +118,14 @@ def test_in_mem_cert():
     assert 'test.example.proxy' in cert_cache, cert_cache.keys()
 
     cached_value = cert_cache['test.example.proxy']
-    res = ca.load_cert('test.example.proxy')
+    cert, key = ca.load_cert('test.example.proxy')
+
+    verify_cert_san(cert, 'DNS:test.example.proxy')
+
     # assert underlying cache unchanged
     assert cached_value == cert_cache['test.example.proxy']
 
-def test_in_mem_wildcard_cert():
+def test_in_mem_parent_wildcard_cert():
     cert_cache = {}
     ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
     cert, key = ca.load_cert('test.example.proxy', wildcard=True, wildcard_use_parent=True)
@@ -82,6 +135,8 @@ def test_in_mem_wildcard_cert():
     cert2, key2 = ca.load_cert('example.proxy')
     # assert underlying cache unchanged
     assert cached_value == cert_cache['example.proxy']
+
+    verify_cert_san(cert2, 'DNS:example.proxy, DNS:*.example.proxy')
 
 def test_create_root_already_exists():
     ret = main([TEST_CA_ROOT])
