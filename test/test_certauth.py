@@ -238,7 +238,9 @@ def test_ca_lru_cache():
     assert 'example.com' in lru
     assert len(lru) == 2
 
-    res = ca.load_cert('XYZ.example.com')
+    res = ca.load_cert('XYZ.example.com', include_cache_key=True)
+    assert res[2] == 'XYZ.example.com'
+
     assert 'XYZ.example.com' in lru
     assert 'ABC.example.com' in lru
     assert len(lru) == 2
