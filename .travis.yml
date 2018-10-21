@@ -1,12 +1,16 @@
 language: python
 
 python:
-  - "2.6"
   - "2.7"
-  - "3.3"
   - "3.4"
   - "3.5"
   - "3.6"
+
+matrix:
+  include:
+    - python: "3.7"
+      dist: xenial
+      sudo: required
 
 os:
   - linux
@@ -17,11 +21,11 @@ install:
   - pip install -U pip setuptools
   - if [[ $TRAVIS_PYTHON_VERSION == "2.6" ]]; then pip install ordereddict; fi
   - python setup.py install
-  - pip install coverage pytest-cov coveralls
+  - pip install coverage pytest-cov codecov
 
 script:
   - python setup.py test
 
 after_success:
-  - coveralls
+  - codecov
 

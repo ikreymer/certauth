@@ -7,13 +7,12 @@ from OpenSSL import crypto
 from OpenSSL.SSL import FILETYPE_PEM
 
 import random
+
+import ipaddress
+
 from argparse import ArgumentParser
 
-try:
-    from collections import OrderedDict
-except ImportError:  #pragma: no cover
-    # py2.6 only!
-    from ordereddict import OrderedDict
+from collections import OrderedDict
 
 import threading
 
@@ -96,10 +95,26 @@ class CertificateAuthority(object):
 
         return cert, key
 
+    def is_host_ip(self, host):
+        try:
+            # if py2.7, need to decode to unicode str
+            if hasattr(host, 'decode'):  #pragma: no cover
+                host = host.decode('ascii')
+
+            ipaddress.ip_address(host)
+            return True
+        except (ValueError, UnicodeDecodeError) as e:
+            return False
+
     def load_cert(self, host, overwrite=False,
                               wildcard=False,
                               wildcard_use_parent=False,
                               include_cache_key=False):
+
+        is_ip = self.is_host_ip(host)
+
+        if is_ip:
+            wildcard = False
 
         if wildcard and wildcard_use_parent:
             host_parts = host.split('.', 1)
@@ -120,7 +135,8 @@ class CertificateAuthority(object):
             cert, key = self.generate_host_cert(host,
                                                 self.ca_cert,
                                                 self.ca_key,
-                                                wildcard)
+                                                wildcard,
+                                                is_ip=is_ip)
 
             # Write cert + key
             buff = BytesIO()
@@ -211,7 +227,9 @@ class CertificateAuthority(object):
         return cert, key
 
     def generate_host_cert(self, host, root_cert, root_key,
-                           wildcard=False, hash_func=DEF_HASH_FUNC):
+                           wildcard=False,
+                           hash_func=DEF_HASH_FUNC,
+                           is_ip=False):
 
         host = host.encode('utf-8')
 
@@ -231,17 +249,21 @@ class CertificateAuthority(object):
         cert.set_issuer(root_cert.get_subject())
         cert.set_pubkey(req.get_pubkey())
 
+        primary = b'DNS:' + host
+
         if wildcard:
-            DNS = b'DNS:'
-            alt_hosts = [DNS + host,
-                         DNS + b'*.' + host]
+            alt_hosts = primary + b', DNS:*.' + host
 
-            alt_hosts = b', '.join(alt_hosts)
+        elif is_ip:
+            alt_hosts = b'IP:' + host + b', ' + primary
 
-            cert.add_extensions([
-                crypto.X509Extension(b'subjectAltName',
-                                     False,
-                                     alt_hosts)])
+        else:
+            alt_hosts = primary
+
+        cert.add_extensions([
+            crypto.X509Extension(b'subjectAltName',
+                                 False,
+                                 alt_hosts)])
 
         cert.sign(root_key, hash_func)
         return cert, key
@@ -268,6 +290,7 @@ class FileCache(object):
             os.makedirs(certs_dir)
 
     def key_for_host(self, host):
+        host = host.replace(':', '-')
         return os.path.join(self.certs_dir, host) + '.pem'
 
     def __setitem__(self, host, cert_string):
