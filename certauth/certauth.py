@@ -286,8 +286,8 @@ class FileCache(object):
         self.certs_dir = certs_dir
         self.modified = False
 
-        if not os.path.exists(certs_dir):
-            os.makedirs(certs_dir)
+        if self.certs_dir and not os.path.exists(self.certs_dir):
+            os.makedirs(self.certs_dir)
 
     def key_for_host(self, host):
         host = host.replace(':', '-')
@@ -313,7 +313,7 @@ class FileCache(object):
 class RootCACache(FileCache):
     def __init__(self, ca_file):
         self.ca_file = ca_file
-        ca_dir = os.path.dirname(ca_file)
+        ca_dir = os.path.dirname(ca_file) or '.'
         super(RootCACache, self).__init__(ca_dir)
 
     def key_for_host(self, host=None):
