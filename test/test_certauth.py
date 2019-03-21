@@ -12,6 +12,9 @@ import time
 import pytest
 
 
+CA_ROOT_FILENAME = 'certauth_test_ca.pem'
+
+
 @pytest.fixture
 def ca():
     return CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR)
@@ -21,10 +24,16 @@ def setup_module():
     global TEST_CA_DIR
     TEST_CA_DIR = tempfile.mkdtemp()
 
+    global orig_cwd
+    orig_cwd = os.getcwd()
+    os.chdir(TEST_CA_DIR)
+
     global TEST_CA_ROOT
-    TEST_CA_ROOT = os.path.join(TEST_CA_DIR, 'certauth_test_ca.pem')
+    TEST_CA_ROOT = os.path.join(TEST_CA_DIR, CA_ROOT_FILENAME)
 
 def teardown_module():
+    os.chdir(orig_cwd)
+
     shutil.rmtree(TEST_CA_DIR)
     assert not os.path.isdir(TEST_CA_DIR)
     assert not os.path.isfile(TEST_CA_ROOT)
@@ -247,4 +256,8 @@ def test_ca_lru_cache():
 
     assert 'example.com' not in lru
 
+
+def test_create_root_no_dir_already_exists():
+    ret = main([CA_ROOT_FILENAME, '-c', 'Test Root Cert'])
+    assert ret == 1
 
