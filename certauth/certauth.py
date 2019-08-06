@@ -9,6 +9,7 @@ from OpenSSL.SSL import FILETYPE_PEM
 import random
 
 import ipaddress
+import tldextract
 
 from argparse import ArgumentParser
 
@@ -106,6 +107,21 @@ class CertificateAuthority(object):
         except (ValueError, UnicodeDecodeError) as e:
             return False
 
+    def get_wildcard_domain(self, host):
+        host_parts = host.split('.', 1)
+        if len(host_parts) < 2 or '.' not in host_parts[1]:
+            return host
+
+        ext = tldextract.extract(host)
+
+        # allow using parent domain if:
+        # 1) no suffix (unknown tld)
+        # 2) the parent domain contains 'domain.suffix', not just .suffix
+        if not ext.suffix or ext.domain + '.' + ext.suffix in host_parts[1]:
+            return host_parts[1]
+
+        return host
+
     def load_cert(self, host, overwrite=False,
                               wildcard=False,
                               wildcard_use_parent=False,
@@ -117,9 +133,7 @@ class CertificateAuthority(object):
             wildcard = False
 
         if wildcard and wildcard_use_parent:
-            host_parts = host.split('.', 1)
-            if len(host_parts) == 2 and '.' in host_parts[1]:
-                host = host_parts[1]
+            host = self.get_wildcard_domain(host)
 
         cert_str = None
 
