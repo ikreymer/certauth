@@ -165,6 +165,32 @@ def test_in_mem_parent_wildcard_cert():
 
     verify_cert_san(cert2, 'DNS:example.proxy, DNS:*.example.proxy')
 
+def test_in_mem_parent_wildcard_cert_at_tld():
+    cert_cache = {}
+    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
+    cert, key = ca.load_cert('example.org.uk', wildcard=True, wildcard_use_parent=True)
+    assert 'example.org.uk' in cert_cache, cert_cache.keys()
+
+    cached_value = cert_cache['example.org.uk']
+    cert2, key2 = ca.load_cert('example.org.uk')
+    # assert underlying cache unchanged
+    assert cached_value == cert_cache['example.org.uk']
+
+    verify_cert_san(cert2, 'DNS:example.org.uk, DNS:*.example.org.uk')
+
+def test_in_mem_parent_wildcard_cert_2():
+    cert_cache = {}
+    ca = CertificateAuthority('Test CA', TEST_CA_ROOT, cert_cache)
+    cert, key = ca.load_cert('test.example.org.uk', wildcard=True, wildcard_use_parent=True)
+    assert 'example.org.uk' in cert_cache, cert_cache.keys()
+
+    cached_value = cert_cache['example.org.uk']
+    cert2, key2 = ca.load_cert('example.org.uk')
+    # assert underlying cache unchanged
+    assert cached_value == cert_cache['example.org.uk']
+
+    verify_cert_san(cert2, 'DNS:example.org.uk, DNS:*.example.org.uk')
+
 def test_create_root_already_exists():
     ret = main([TEST_CA_ROOT])
     # not created, already exists

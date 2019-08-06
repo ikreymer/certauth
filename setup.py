@@ -20,7 +20,7 @@ class PyTest(TestCommand):
 
 setup(
     name='certauth',
-    version='1.2.2',
+    version='1.2.3',
     author='Ilya Kreymer',
     author_email='ikreymer@gmail.com',
     license='MIT',
@@ -33,6 +33,7 @@ setup(
         ],
     install_requires=[
         'pyopenssl',
+        'tldextract',
         ],
     zip_safe=True,
     entry_points="""
