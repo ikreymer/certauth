@@ -98,6 +98,12 @@ To automatically generate a wildcard cert for parent domain, use:
 
 This will also generate a cert for ``*.example.com``
 
+Starting with 1.3.0, ``certauth`` uses ``tldextract`` to determine the tld for a given host,
+and will not use a parent domain if it is itself a tld suffix.
+
+For example, calling ``load_cert`` with ``wildcard_for_parent=True`` applied to ``example.co.uk`` will generate a cert
+for ``*.example.co.uk`` not ``*.co.uk``.
+
 
 CLI Usage Examples
 ==================
