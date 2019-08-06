@@ -33,11 +33,6 @@ ROOT_CA = '!!root_ca'
 
 
 # =================================================================
-# don't auto-update suffix list
-tld = tldextract.TLDExtract(suffix_list_urls=None)
-
-
-# =================================================================
 class CertificateAuthority(object):
     """
     Utility class for signing individual certificate
@@ -117,7 +112,7 @@ class CertificateAuthority(object):
         if len(host_parts) < 2 or '.' not in host_parts[1]:
             return host
 
-        ext = tld(host)
+        ext = tldextract.extract(host)
 
         # allow using parent domain if:
         # 1) no suffix (unknown tld)
