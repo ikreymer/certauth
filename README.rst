@@ -110,6 +110,21 @@ For example, calling:
 will now result in a cert for ``*.example.co.uk``, not ``*.co.uk``.
 
 
+Alternative FQDNs or IPs in SAN
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes, you want to add alternative FQDNs or IPs as Subject Alternative Names
+to your certificate. To do that, simply use the ``cert_fqdns`` or ``cert_ips``
+params of ``load_cert``:
+
+.. code:: python
+
+   cert, key = ca.load_cert('example.com', cert_fqdns=['example.org'], cert_ips=['192.168.1.1'])
+
+This will generate a cert for ``example.com`` with ``example.org`` and ``192.168.1.1`` in
+the SAN.
+
+
 CLI Usage Examples
 ==================
 
