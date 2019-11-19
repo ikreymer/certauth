@@ -104,7 +104,7 @@ class CertificateAuthority(object):
 
             ipaddress.ip_address(host)
             return True
-        except (ValueError, UnicodeDecodeError) as e:
+        except (ValueError, UnicodeDecodeError):
             return False
 
     def get_wildcard_domain(self, host):
@@ -125,7 +125,9 @@ class CertificateAuthority(object):
     def load_cert(self, host, overwrite=False,
                               wildcard=False,
                               wildcard_use_parent=False,
-                              include_cache_key=False):
+                              include_cache_key=False,
+                              cert_ips=set(),
+                              cert_fqdns=set()):
 
         is_ip = self.is_host_ip(host)
 
@@ -134,6 +136,8 @@ class CertificateAuthority(object):
 
         if wildcard and wildcard_use_parent:
             host = self.get_wildcard_domain(host)
+
+        cert_ips = list(cert_ips)  # set to ordered list
 
         cert_str = None
 
@@ -150,7 +154,9 @@ class CertificateAuthority(object):
                                                 self.ca_cert,
                                                 self.ca_key,
                                                 wildcard,
-                                                is_ip=is_ip)
+                                                is_ip=is_ip,
+                                                cert_ips=cert_ips,
+                                                cert_fqdns=cert_fqdns)
 
             # Write cert + key
             buff = BytesIO()
@@ -171,16 +177,18 @@ class CertificateAuthority(object):
             return cert, key, cache_key
 
     def cert_for_host(self, host, overwrite=False,
-                                  wildcard=False):
+                                  wildcard=False,
+                                  cert_ips=set(),
+                                  cert_fqdns=set()):
 
         res = self.load_cert(host, overwrite=overwrite,
-                                   wildcard=wildcard,
-                                   wildcard_use_parent=False,
-                                   include_cache_key=True)
+                                wildcard=wildcard,
+                                wildcard_use_parent=False,
+                                include_cache_key=True,
+                                cert_ips=cert_ips,
+                                cert_fqdns=cert_fqdns)
 
         return res[2]
-
-
 
     def get_wildcard_cert(self, cert_host, overwrite=False):
         res = self.load_cert(cert_host, overwrite=overwrite,
@@ -243,9 +251,11 @@ class CertificateAuthority(object):
     def generate_host_cert(self, host, root_cert, root_key,
                            wildcard=False,
                            hash_func=DEF_HASH_FUNC,
-                           is_ip=False):
+                           is_ip=False,
+                           cert_ips=set(),
+                           cert_fqdns=set()):
 
-        host = host.encode('utf-8')
+        utf8_host = host.encode('utf-8')
 
         # Generate key
         key = crypto.PKey()
@@ -253,31 +263,34 @@ class CertificateAuthority(object):
 
         # Generate CSR
         req = crypto.X509Req()
-        req.get_subject().CN = host
+        req.get_subject().CN = utf8_host
         req.set_pubkey(key)
         req.sign(key, hash_func)
 
         # Generate Cert
-        cert = self._make_cert(host)
+        cert = self._make_cert(utf8_host)
 
         cert.set_issuer(root_cert.get_subject())
         cert.set_pubkey(req.get_pubkey())
 
-        primary = b'DNS:' + host
+        all_hosts = ['DNS:'+host]
 
         if wildcard:
-            alt_hosts = primary + b', DNS:*.' + host
+            all_hosts += ['DNS:*.' + host]
 
         elif is_ip:
-            alt_hosts = b'IP:' + host + b', ' + primary
+            all_hosts += ['IP:' + host]
 
-        else:
-            alt_hosts = primary
+        all_hosts += ['IP: {}'.format(ip) for ip in cert_ips]
+        all_hosts += ['DNS: {}'.format(fqdn) for fqdn in cert_fqdns]
+
+        san_hosts = ', '.join(all_hosts)
+        san_hosts = san_hosts.encode('utf-8')
 
         cert.add_extensions([
             crypto.X509Extension(b'subjectAltName',
                                  False,
-                                 alt_hosts)])
+                                 san_hosts)])
 
         cert.sign(root_key, hash_func)
         return cert, key
@@ -368,6 +381,12 @@ def main(args=None):
     parser.add_argument('-w', '--wildcard_cert', action='store_true',
                         help='add wildcard SAN to host: *.<host>, <host>')
 
+    parser.add_argument('-I', '--cert_ips', action='store', default='',
+                        help='add IPs to the cert\'s SAN')
+
+    parser.add_argument('-D', '--cert_fqdns', action='store', default='',
+                        help='add more domains to the cert\'s SAN')
+
     r = parser.parse_args(args=args)
 
     certs_dir = r.certs_dir
@@ -376,12 +395,21 @@ def main(args=None):
     root_cert = r.root_ca_cert
     hostname = r.hostname
 
+    if r.cert_ips != '':
+        cert_ips = r.cert_ips.split(',')
+    else:
+        cert_ips = []
+    if r.cert_fqdns != '':
+        cert_fqdns = r.cert_fqdns.split(',')
+    else:
+        cert_fqdns = []
+
     if not hostname:
         overwrite = r.force
     else:
         overwrite = False
 
-    cert_cache = FileCache(r.certs_dir)
+    cert_cache = FileCache(certs_dir)
     ca_file_cache = RootCACache(root_cert)
 
     ca = CertificateAuthority(ca_name=r.certname,
@@ -403,7 +431,9 @@ def main(args=None):
     overwrite = r.force
     ca.load_cert(hostname, overwrite=overwrite,
                            wildcard=wildcard,
-                           wildcard_use_parent=False)
+                           wildcard_use_parent=False,
+                           cert_ips=cert_ips,
+                           cert_fqdns=cert_fqdns)
 
     if cert_cache.modified:
         print('Created new cert "' + hostname +
