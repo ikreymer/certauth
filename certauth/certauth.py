@@ -21,7 +21,7 @@ import threading
 # Valid for 2 years from now
 # Max validity is 24 months:
 # https://cabforum.org/2017/03/17/ballot-193-825-day-certificate-lifetimes/
-CERT_NOT_AFTER = 3 * 365 * 24 * 60 * 60
+CERT_NOT_AFTER = 2 * 365 * 24 * 60 * 60
 
 CERTS_DIR = './ca/certs/'
 
