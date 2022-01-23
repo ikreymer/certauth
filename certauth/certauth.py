@@ -3,8 +3,14 @@ import os
 
 from io import BytesIO
 
-from OpenSSL import crypto
-from OpenSSL.SSL import FILETYPE_PEM
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, load_pem_private_key
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.x509.oid import NameOID
+
+import datetime
 
 import random
 
@@ -21,8 +27,8 @@ import threading
 # Valid for 3 years from now
 # Max validity is 39 months:
 # https://casecurity.org/2015/02/19/ssl-certificate-validity-periods-limited-to-39-months-starting-in-april/
-CERT_NOT_AFTER = 3 * 365 * 24 * 60 * 60
-
+CERT_NOT_AFTER = datetime.datetime.today() + datetime.timedelta(days=1095)
+CERT_NOT_BEFORE = datetime.datetime.today() - datetime.timedelta(1, 0, 0)
 CERTS_DIR = './ca/certs/'
 
 CERT_NAME = 'certauth sample CA'
@@ -47,7 +53,7 @@ class CertificateAuthority(object):
     def __init__(self, ca_name,
                  ca_file_cache,
                  cert_cache=None,
-                 cert_not_before=0,
+                 cert_not_before=CERT_NOT_BEFORE,
                  cert_not_after=CERT_NOT_AFTER,
                  overwrite=False):
 
@@ -211,40 +217,60 @@ class CertificateAuthority(object):
         return self.ca_file_cache.ca_file
 
     def _make_cert(self, certname):
-        cert = crypto.X509()
-        cert.set_serial_number(random.randint(0, 2 ** 64 - 1))
-        cert.get_subject().CN = certname
-
-        cert.set_version(2)
-        cert.gmtime_adj_notBefore(self.cert_not_before)
-        cert.gmtime_adj_notAfter(self.cert_not_after)
-        return cert
+        #cert = crypto.X509()
+        builder = x509.CertificateBuilder()
+        #cert.set_serial_number(random.randint(0, 2 ** 64 - 1))
+        builder = builder.serial_number(x509.random_serial_number())
+        #cert.get_subject().CN = certname
+        builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, certname)]))
+        #cert.set_version(2)
+        #cert.gmtime_adj_notBefore(self.cert_not_before)
+        builder = builder.not_valid_before(self.cert_not_before)
+        #cert.gmtime_adj_notAfter(self.cert_not_after)
+        builder = builder.not_valid_after(self.cert_not_after)
+        return builder
 
     def generate_ca_root(self, ca_name, hash_func=DEF_HASH_FUNC):
         # Generate key
-        key = crypto.PKey()
-        key.generate_key(crypto.TYPE_RSA, 2048)
+        #key = crypto.PKey()
+        #key.generate_key(crypto.TYPE_RSA, 2048)
+        key = ec.generate_private_key(ec.SECP384R1())
 
         # Generate cert
-        cert = self._make_cert(ca_name)
-
-        cert.set_issuer(cert.get_subject())
-        cert.set_pubkey(key)
-        cert.add_extensions([
-            crypto.X509Extension(b"basicConstraints",
-                                 True,
-                                 b"CA:TRUE, pathlen:0"),
-
-            crypto.X509Extension(b"keyUsage",
-                                 True,
-                                 b"keyCertSign, cRLSign"),
-
-            crypto.X509Extension(b"subjectKeyIdentifier",
-                                 False,
-                                 b"hash",
-                                 subject=cert),
-            ])
-        cert.sign(key, hash_func)
+        builder = self._make_cert(ca_name)
+        #cert.set_issuer(cert.get_subject())
+        subj = builder._subject_name.rfc4514_string().strip('CN=')
+        builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subj)]))
+        #cert.set_pubkey(key)
+        builder = builder.public_key(key.public_key())
+        #cert.add_extensions([
+         #   crypto.X509Extension(b"basicConstraints",
+         #                        True,
+         #                        b"CA:TRUE, pathlen:0"),
+        builder = builder.add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+         #   crypto.X509Extension(b"keyUsage",
+         #                        True,
+         #                        b"keyCertSign, cRLSign"),
+        
+        builder = builder.add_extension(x509.KeyUsage(
+            content_commitment=True,
+            crl_sign=True,
+            data_encipherment=True,
+            decipher_only=False,
+            digital_signature=True,
+            encipher_only=False,
+            key_agreement=True,
+            key_cert_sign=True, 
+            key_encipherment=True),
+            critical=True)
+         #   crypto.X509Extension(b"subjectKeyIdentifier",
+         #                        False,
+         #                        b"hash",
+         #                        subject=cert),
+         #   ])
+        builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+        #cert.sign(key, hash_func)
+        cert = builder.sign(private_key=key, algorithm=hashes.SHA256())
 
         return cert, key
 
@@ -255,23 +281,31 @@ class CertificateAuthority(object):
                            cert_ips=set(),
                            cert_fqdns=set()):
 
-        utf8_host = host.encode('utf-8')
+        
 
         # Generate key
-        key = crypto.PKey()
-        key.generate_key(crypto.TYPE_RSA, 2048)
+        #key = crypto.PKey()
+        #key.generate_key(crypto.TYPE_RSA, 2048)
+        key = ec.generate_private_key(ec.SECP384R1())
 
-        # Generate CSR
-        req = crypto.X509Req()
-        req.get_subject().CN = utf8_host
-        req.set_pubkey(key)
-        req.sign(key, hash_func)
+        # Generate CSR - I think this may be entirely superfluous
+        #req = crypto.X509Req()
+        builder = x509.CertificateSigningRequestBuilder()
+        #req.get_subject().CN = host
+        builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)]))
+        #req.set_pubkey(key)
+        #When the request is signed by a certificate authority, the private key’s associated public key will be stored in the resulting certificate.
+        #req.sign(key, hash_func)
+        req = builder.sign(key, hashes.SHA256())
+
 
         # Generate Cert
-        cert = self._make_cert(utf8_host)
-
-        cert.set_issuer(root_cert.get_subject())
-        cert.set_pubkey(req.get_pubkey())
+        builder = self._make_cert(host)
+        #cert.set_issuer(root_cert.get_subject())
+        subj = root_cert.subject.rfc4514_string().strip("CN=")
+        builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subj)]))
+        #cert.set_pubkey(req.get_pubkey())
+        builder = builder.public_key(key.public_key())
 
         all_hosts = ['DNS:'+host]
 
@@ -284,25 +318,35 @@ class CertificateAuthority(object):
         all_hosts += ['IP: {}'.format(ip) for ip in cert_ips]
         all_hosts += ['DNS: {}'.format(fqdn) for fqdn in cert_fqdns]
 
-        san_hosts = ', '.join(all_hosts)
-        san_hosts = san_hosts.encode('utf-8')
-
+        #san_hosts = ', '.join(all_hosts)
+        #san_hosts = san_hosts.encode('utf-8')
+        '''
         cert.add_extensions([
             crypto.X509Extension(b'subjectAltName',
                                  False,
                                  san_hosts)])
+        '''
 
-        cert.sign(root_key, hash_func)
+        builder = builder.add_extension(x509.SubjectAlternativeName([x509.DNSName(san_host) for san_host in all_hosts]),critical=False)
+        #cert.sign(root_key, hash_func)
+        cert = builder.sign(private_key=root_key, algorithm=hashes.SHA256())
         return cert, key
 
     def write_pem(self, buff, cert, key):
-        buff.write(crypto.dump_privatekey(FILETYPE_PEM, key))
-        buff.write(crypto.dump_certificate(FILETYPE_PEM, cert))
+        keys = key.private_bytes(Encoding.PEM,PrivateFormat.TraditionalOpenSSL,NoEncryption()).decode()
+        certs = cert.public_bytes(Encoding.PEM).decode()
+        
+        buff.write((keys+certs).encode())
 
     def read_pem(self, buff):
-        cert = crypto.load_certificate(FILETYPE_PEM, buff.read())
-        buff.seek(0)
-        key = crypto.load_privatekey(FILETYPE_PEM, buff.read())
+        buff = buff.read().decode().split("-----\n-----")
+        keys,certs = buff[0]+"-----\n","-----"+buff[1]
+        print("READ_PEM/KEYS: "+keys)
+        print("READ_PEM/CERTS: "+certs)
+        cert = x509.load_pem_x509_certificate(certs.encode(), default_backend())
+        #key = x509.load_pem_x509_certificate(keys.encode(), default_backend())
+        #keys=keys.replace('BEGIN PRIVATE KEY','BEGIN EC PRIVATE KEY').replace('END PRIVATE KEY', 'END EC PRIVATE KEY') # dumb hacks because dumb bugs
+        key = load_pem_private_key(keys.encode(), password=None)
         return cert, key
 
 
