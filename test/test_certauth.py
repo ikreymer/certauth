@@ -1,7 +1,7 @@
 import os
 import shutil
 
-from certauth.certauth import main, CertificateAuthority, FileCache, LRUCache, ROOT_CA
+from certauth.certauth import main, CertificateAuthority, FileCache, LRUCache, _ROOT_CA
 
 import tempfile
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -281,7 +281,7 @@ def test_ca_cert_in_mem():
     assert len(buff_pem) > 0
 
     # PEM stored in root_cert_dict
-    assert root_cert_dict[ROOT_CA] == buff_pem
+    assert root_cert_dict[_ROOT_CA] == buff_pem
 
     #cert_pem = crypto.load_certificate(FILETYPE_PEM, buff_pem)
     cert_pem = x509.load_pem_x509_certificate(buff_pem, default_backend())
