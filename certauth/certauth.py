@@ -25,18 +25,21 @@ from collections import OrderedDict
 import threading
 
 # =================================================================
-# Valid for 3 years from now
-# Max validity is 39 months:
-# https://casecurity.org/2015/02/19/ssl-certificate-validity-periods-limited-to-39-months-starting-in-april/
-CERT_NOT_AFTER = datetime.datetime.today() + datetime.timedelta(days=1095)
-CERT_NOT_BEFORE = datetime.datetime.today() - datetime.timedelta(1, 0, 0)
-CERTS_DIR = './ca/certs/'
 
-CERT_NAME = 'certauth sample CA'
+_CA_CERT_VALID_DAYS = 1095
+_HOST_CERT_VALID_DAYS = 3
+def _CA_CERT_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_CA_CERT_VALID_DAYS)
+def _CA_CERT_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
+def _HOST_CERT_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_HOST_CERT_VALID_DAYS)
+def _HOST_CERT_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
-DEF_HASH_FUNC = 'sha256'
+_CERTS_DIR = './ca/certs/'
 
-ROOT_CA = '!!root_ca'
+_CERT_NAME = 'certauth sample CA'
+
+#DEF_HASH_FUNC = 'sha256'
+
+_ROOT_CA = '!!root_ca'
 
 def _normalized(s): #we  must comply with str(ip_address()) to pass tests
         try:
@@ -59,8 +62,8 @@ class CertificateAuthority(object):
     def __init__(self, ca_name,
                  ca_file_cache,
                  cert_cache=None,
-                 cert_not_before=CERT_NOT_BEFORE,
-                 cert_not_after=CERT_NOT_AFTER,
+                 cert_not_before=None,
+                 cert_not_after=None,
                  overwrite=False):
 
         if isinstance(ca_file_cache, str):
@@ -80,6 +83,7 @@ class CertificateAuthority(object):
         self.ca_name = ca_name
 
         self.cert_not_before = cert_not_before
+
         self.cert_not_after = cert_not_after
 
         res = self.load_root_ca_cert(overwrite=overwrite)
@@ -89,7 +93,7 @@ class CertificateAuthority(object):
         cert_str = None
 
         if not overwrite:
-            cert_str = self.ca_file_cache.get(ROOT_CA)
+            cert_str = self.ca_file_cache.get(_ROOT_CA)
 
         # if cached, just read pem
         if cert_str:
@@ -104,7 +108,7 @@ class CertificateAuthority(object):
             cert_str = buff.getvalue()
 
             # store cert in cache
-            self.ca_file_cache[ROOT_CA] = cert_str
+            self.ca_file_cache[_ROOT_CA] = cert_str
 
         return cert, key
 
@@ -159,6 +163,17 @@ class CertificateAuthority(object):
         # if cached, just read pem
         if cert_str:
             cert, key = self.read_pem(BytesIO(cert_str))
+            
+            #Renew certificate
+            days_remain = (cert.not_valid_after - datetime.datetime.utcnow()).total_seconds()/86400 #float days til expiration
+            print("DaysRemain: "+str(days_remain))
+            if days_remain < 2*_HOST_CERT_VALID_DAYS/3:
+                cert, key = self.renew_host_certificate(cert, key)
+                # Write cert + key
+                buff = BytesIO()
+                self.write_pem(buff, cert, key)
+                cert_str = buff.getvalue()
+                self.cert_cache[host] = cert_str
 
         else:
             # if not cached, generate new root or host cert
@@ -220,7 +235,7 @@ class CertificateAuthority(object):
         return p12
 
     def get_root_pem(self):
-        return self.ca_file_cache.get(ROOT_CA)
+        return self.ca_file_cache.get(_ROOT_CA)
 
     def get_root_pem_filename(self):
         return self.ca_file_cache.ca_file
@@ -238,15 +253,16 @@ class CertificateAuthority(object):
         builder = x509.CertificateBuilder()
         builder = builder.serial_number(x509.random_serial_number())
         builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, ca_name)]))
-        builder = builder.not_valid_before(self.cert_not_before)
-        #This hacky bit allows us to pass the custom notafter/notbefore tests without major changes
-        #There is now NO way to make a ca_cert whos notbefore/notafter are equal to CERT_NOT_BEFORE/CERT_NOT_AFTER
-        #Oops.  If you want it to be functionally the same, add or remove seconds, or restructure the code.
-        if self.cert_not_after != CERT_NOT_AFTER:
+        if self.cert_not_before:
+            builder = builder.not_valid_before(self.cert_not_before)
+        else:
+            builder = builder.not_valid_before(_CA_CERT_NOT_BEFORE())
+            
+        if self.cert_not_after:
             builder = builder.not_valid_after(self.cert_not_after)
         else:
-            builder = builder.not_valid_after(datetime.datetime.today() + datetime.timedelta(days=3650))
-        ##/hackybit##
+            builder = builder.not_valid_after(_CA_CERT_NOT_AFTER())
+            
         subj = builder._subject_name.rfc4514_string().strip('CN=')
         builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subj)]))
         builder = builder.public_key(key.public_key())
@@ -271,7 +287,6 @@ class CertificateAuthority(object):
 
     def generate_host_cert(self, host, root_cert, root_key,
                            wildcard=False,
-                           hash_func=DEF_HASH_FUNC,
                            is_ip=False,
                            cert_ips=set(),
                            cert_fqdns=set()):
@@ -279,21 +294,22 @@ class CertificateAuthority(object):
         #In case host is an ip_address
         host = _normalized(host)
 
-        # Generate key
+        # Generate Key
         key = ec.generate_private_key(ec.SECP384R1())
-
-        # Generate CSR - I think this may be entirely superfluous
-        builder = x509.CertificateSigningRequestBuilder()
-        builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)]))
-        req = builder.sign(key, hashes.SHA256())
-
 
         # Generate Cert
         builder = x509.CertificateBuilder()
         builder = builder.serial_number(x509.random_serial_number())
         builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)]))
-        builder = builder.not_valid_before(self.cert_not_before)
-        builder = builder.not_valid_after(self.cert_not_after)
+        if self.cert_not_before:
+            builder = builder.not_valid_before(self.cert_not_before)
+        else:
+            builder = builder.not_valid_before(_HOST_CERT_NOT_BEFORE())
+
+        if self.cert_not_after:
+            builder = builder.not_valid_after(self.cert_not_after)
+        else:
+            builder = builder.not_valid_after(_HOST_CERT_NOT_AFTER())
         issuer = root_cert.subject.rfc4514_string().strip("CN=")
         builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, issuer)]))
 
@@ -312,6 +328,20 @@ class CertificateAuthority(object):
 
         builder = builder.add_extension(x509.SubjectAlternativeName([san_host for san_host in all_hosts]),critical=False)
         cert = builder.sign(private_key=root_key, algorithm=hashes.SHA256())
+        return cert, key
+
+    def renew_host_certificate(self, cert, key):
+        # Generate Cert
+        print("I doth renew the cert")
+        builder = x509.CertificateBuilder()
+        builder = builder.serial_number(x509.random_serial_number())
+        builder = builder.subject_name(cert.subject)
+        builder = builder.not_valid_before(_HOST_CERT_NOT_BEFORE())
+        builder = builder.not_valid_after(_HOST_CERT_NOT_AFTER())
+        builder = builder.issuer_name(cert.issuer)
+        builder = builder.public_key(key.public_key())
+        builder._extensions = cert.extensions
+        cert = builder.sign(private_key=self.ca_key, algorithm=hashes.SHA256())
         return cert, key
 
     def write_pem(self, buff, cert, key):
@@ -390,13 +420,13 @@ def main(args=None):
     parser.add_argument('root_ca_cert',
                         help='Path to existing or new root CA file')
 
-    parser.add_argument('-c', '--certname', action='store', default=CERT_NAME,
+    parser.add_argument('-c', '--certname', action='store', default=_CERT_NAME,
                         help='Name for root certificate')
 
     parser.add_argument('-n', '--hostname',
                         help='Hostname certificate to create')
 
-    parser.add_argument('-d', '--certs-dir', default=CERTS_DIR,
+    parser.add_argument('-d', '--certs-dir', default=_CERTS_DIR,
                         help='Directory for host certificates')
 
     parser.add_argument('-f', '--force', action='store_true',
