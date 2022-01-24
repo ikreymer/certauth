@@ -6,7 +6,7 @@ from certauth.certauth import main, CertificateAuthority, FileCache, LRUCache, _
 import tempfile
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, load_pem_private_key, pkcs12
+from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption, load_pem_private_key, pkcs12
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID, ExtensionOID
@@ -41,6 +41,9 @@ def setup_module():
 
     global TEST_CA_ROOT
     TEST_CA_ROOT = os.path.join(TEST_CA_DIR, CA_ROOT_FILENAME)
+
+    global TEST_HOST_NAME
+    TEST_HOST_NAME = "pytest_safetodelete"
 
 def teardown_module():
     os.chdir(orig_cwd)
@@ -253,10 +256,10 @@ def test_create_root_subdir():
 
     assert ca.get_root_pem_filename() == ca_file
 
-def test_custom_not_before_not_after():
+def test_ca_custom_not_before_not_after():
     ca = CertificateAuthority('Test Custom CA', TEST_CA_ROOT,
-                              cert_not_before=datetime.datetime.today() - datetime.timedelta(4, 0, 0),
-                              cert_not_after=datetime.datetime.utcnow() + datetime.timedelta(days=10))
+            ca_not_before=datetime.datetime.today() - datetime.timedelta(days=4),
+            ca_not_after=datetime.datetime.utcnow() + datetime.timedelta(days=10))
 
     # check PKCS12
     buff_pk12 = ca.get_root_PKCS12()
@@ -264,12 +267,28 @@ def test_custom_not_before_not_after():
 
     cert = pkcs12.load_pkcs12(buff_pk12, password=None).cert.certificate
 
-    expected_not_before = datetime.datetime.today() - datetime.timedelta(4, 0, 0)
+    expected_not_before = datetime.datetime.today() - datetime.timedelta(days=4)
     expected_not_after = datetime.datetime.utcnow() + datetime.timedelta(days=10)
 
     assert abs((cert.not_valid_before - expected_not_before).total_seconds()) < 10
     assert abs((cert.not_valid_after - expected_not_after).total_seconds()) < 10
 
+def test_hosts_custom_not_before_not_after():
+    ca = CertificateAuthority('Test Custom CA', TEST_CA_ROOT,
+            hosts_not_before=datetime.datetime.today() - datetime.timedelta(days=4),
+            hosts_not_after=datetime.datetime.utcnow() + datetime.timedelta(days=10))
+
+    # check PKCS12
+    buff_pk12 = ca.get_host_PKCS12("proxy.example.test")
+    assert len(buff_pk12) > 0
+
+    cert = pkcs12.load_pkcs12(buff_pk12, password=None).cert.certificate
+
+    expected_not_before = datetime.datetime.today() - datetime.timedelta(days=4)
+    expected_not_after = datetime.datetime.utcnow() + datetime.timedelta(days=10)
+
+    assert abs((cert.not_valid_before - expected_not_before).total_seconds()) < 10
+    assert abs((cert.not_valid_after - expected_not_after).total_seconds()) < 10
 
 def test_ca_cert_in_mem():
     root_cert_dict = {}
@@ -322,3 +341,29 @@ def test_create_root_no_dir_already_exists():
     ret = main([CA_ROOT_FILENAME, '-c', 'Test Root Cert'])
     assert ret == 1
 
+def test_renew_expired_certificate():
+    ca = CertificateAuthority('Test Custom CA', TEST_CA_ROOT,
+            hosts_not_before=datetime.datetime.today() - datetime.timedelta(days=4),
+            hosts_not_after=datetime.datetime.utcnow() - datetime.timedelta(days=2))
+
+    cert1, key1 = ca.load_cert('ABC.test.example.proxy')
+
+    #We have made an expired certificate
+    assert (datetime.datetime.utcnow()-cert1.not_valid_after).total_seconds() > 0
+    
+    #It should renew
+    cert2, key2 = ca.load_cert('ABC.test.example.proxy')
+    assert cert1.fingerprint(hashes.SHA256()) != cert2.fingerprint(hashes.SHA256())
+
+    #Key is unchanged
+    key1pb = key1.private_bytes(Encoding.PEM,PrivateFormat.TraditionalOpenSSL,NoEncryption())
+    key2pb = key2.private_bytes(Encoding.PEM,PrivateFormat.TraditionalOpenSSL,NoEncryption())
+    assert key1pb == key2pb
+
+    #certificate's public key is unchanged
+    cert1pb = cert1.public_key().public_bytes(Encoding.PEM,PublicFormat.SubjectPublicKeyInfo)
+    cert2pb = cert2.public_key().public_bytes(Encoding.PEM,PublicFormat.SubjectPublicKeyInfo)
+    assert cert1pb == cert2pb
+
+    #extensions match
+    assert str(cert1.extensions) == str(cert2.extensions)

@@ -26,18 +26,17 @@ import threading
 
 # =================================================================
 
-_CA_CERT_VALID_DAYS = 1095
-_HOST_CERT_VALID_DAYS = 3
-def _CA_CERT_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_CA_CERT_VALID_DAYS)
-def _CA_CERT_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
-def _HOST_CERT_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_HOST_CERT_VALID_DAYS)
-def _HOST_CERT_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
+_CA_VALID_DAYS = 1095
+_HOSTS_VALID_DAYS = 3
+
+def _CA_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_CA_VALID_DAYS)
+def _CA_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
+def _HOSTS_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_HOSTS_VALID_DAYS)
+def _HOSTS_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
 _CERTS_DIR = './ca/certs/'
 
 _CERT_NAME = 'certauth sample CA'
-
-#DEF_HASH_FUNC = 'sha256'
 
 _ROOT_CA = '!!root_ca'
 
@@ -62,9 +61,12 @@ class CertificateAuthority(object):
     def __init__(self, ca_name,
                  ca_file_cache,
                  cert_cache=None,
-                 cert_not_before=None,
-                 cert_not_after=None,
-                 overwrite=False):
+                 curve=ec.SECP384R1(),
+                 ca_not_after=None,
+                 ca_not_before=None,
+                 hosts_not_after=None,
+                 hosts_not_before=None,
+                 overwrite=False,):
 
         if isinstance(ca_file_cache, str):
             self.ca_file_cache = RootCACache(ca_file_cache)
@@ -81,10 +83,11 @@ class CertificateAuthority(object):
             self.cert_cache = cert_cache
 
         self.ca_name = ca_name
-
-        self.cert_not_before = cert_not_before
-
-        self.cert_not_after = cert_not_after
+        self.curve = curve
+        self.ca_not_after = ca_not_after
+        self.ca_not_before = ca_not_before
+        self.hosts_not_after = hosts_not_after
+        self.hosts_not_before = hosts_not_before
 
         res = self.load_root_ca_cert(overwrite=overwrite)
         self.ca_cert, self.ca_key = res
@@ -165,9 +168,9 @@ class CertificateAuthority(object):
             cert, key = self.read_pem(BytesIO(cert_str))
             
             #Renew certificate
-            days_remain = (cert.not_valid_after - datetime.datetime.utcnow()).total_seconds()/86400 #float days til expiration
-            print("DaysRemain: "+str(days_remain))
-            if days_remain < 2*_HOST_CERT_VALID_DAYS/3:
+            #float days til cert expires
+            days_remain = (cert.not_valid_after - datetime.datetime.utcnow()).total_seconds()/86400
+            if days_remain < 2*(((cert.not_valid_after-cert.not_valid_before).total_seconds())/86400)/3: 
                 cert, key = self.renew_host_certificate(cert, key)
                 # Write cert + key
                 buff = BytesIO()
@@ -234,6 +237,11 @@ class CertificateAuthority(object):
             NoEncryption())
         return p12
 
+    def get_host_PKCS12(self, host):
+        cert, key = self.load_cert(host=host)
+        p12 = pkcs12.serialize_key_and_certificates(host.encode(), key, cert, [self.ca_cert], NoEncryption())
+        return p12
+
     def get_root_pem(self):
         return self.ca_file_cache.get(_ROOT_CA)
 
@@ -247,21 +255,21 @@ class CertificateAuthority(object):
         ca_name = _normalized(ca_name)
 
         # Generate key
-        key = ec.generate_private_key(ec.SECP384R1())
+        key = ec.generate_private_key(self.curve)
 
         # Generate cert
         builder = x509.CertificateBuilder()
         builder = builder.serial_number(x509.random_serial_number())
         builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, ca_name)]))
-        if self.cert_not_before:
-            builder = builder.not_valid_before(self.cert_not_before)
+        if self.ca_not_before:
+            builder = builder.not_valid_before(self.ca_not_before)
         else:
-            builder = builder.not_valid_before(_CA_CERT_NOT_BEFORE())
+            builder = builder.not_valid_before(_CA_NOT_BEFORE())
             
-        if self.cert_not_after:
-            builder = builder.not_valid_after(self.cert_not_after)
+        if self.ca_not_after:
+            builder = builder.not_valid_after(self.ca_not_after)
         else:
-            builder = builder.not_valid_after(_CA_CERT_NOT_AFTER())
+            builder = builder.not_valid_after(_CA_NOT_AFTER())
             
         subj = builder._subject_name.rfc4514_string().strip('CN=')
         builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subj)]))
@@ -295,21 +303,21 @@ class CertificateAuthority(object):
         host = _normalized(host)
 
         # Generate Key
-        key = ec.generate_private_key(ec.SECP384R1())
+        key = ec.generate_private_key(self.curve)
 
         # Generate Cert
         builder = x509.CertificateBuilder()
         builder = builder.serial_number(x509.random_serial_number())
         builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)]))
-        if self.cert_not_before:
-            builder = builder.not_valid_before(self.cert_not_before)
+        if self.hosts_not_before:
+            builder = builder.not_valid_before(self.hosts_not_before)
         else:
-            builder = builder.not_valid_before(_HOST_CERT_NOT_BEFORE())
+            builder = builder.not_valid_before(_HOSTS_NOT_BEFORE())
 
-        if self.cert_not_after:
-            builder = builder.not_valid_after(self.cert_not_after)
+        if self.hosts_not_after:
+            builder = builder.not_valid_after(self.hosts_not_after)
         else:
-            builder = builder.not_valid_after(_HOST_CERT_NOT_AFTER())
+            builder = builder.not_valid_after(_HOSTS_NOT_AFTER())
         issuer = root_cert.subject.rfc4514_string().strip("CN=")
         builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, issuer)]))
 
@@ -332,12 +340,11 @@ class CertificateAuthority(object):
 
     def renew_host_certificate(self, cert, key):
         # Generate Cert
-        print("I doth renew the cert")
         builder = x509.CertificateBuilder()
         builder = builder.serial_number(x509.random_serial_number())
         builder = builder.subject_name(cert.subject)
-        builder = builder.not_valid_before(_HOST_CERT_NOT_BEFORE())
-        builder = builder.not_valid_after(_HOST_CERT_NOT_AFTER())
+        builder = builder.not_valid_before(_HOSTS_NOT_BEFORE())
+        builder = builder.not_valid_after(_HOSTS_NOT_AFTER())
         builder = builder.issuer_name(cert.issuer)
         builder = builder.public_key(key.public_key())
         builder._extensions = cert.extensions
