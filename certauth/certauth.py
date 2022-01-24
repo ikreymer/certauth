@@ -277,7 +277,6 @@ class CertificateAuthority(object):
         elif self.curve in _ED_CURVES:
             key = _ED_CURVES[self.curve].generate()
         else:
-            print(self.curve)
             raise ValueError("Unsupported curve value.")
 
         # Generate cert
@@ -331,7 +330,6 @@ class CertificateAuthority(object):
         elif self.curve in _ED_CURVES:
             key = _ED_CURVES[self.curve].generate()
         else:
-            print(self.curve)
             raise ValueError("Unsupported curve value.")
 
         # Generate Cert
