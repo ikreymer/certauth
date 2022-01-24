@@ -3,7 +3,7 @@ import os
 
 from io import BytesIO
 
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, load_pem_private_key, pkcs12
 from cryptography import x509
@@ -19,9 +19,7 @@ import ipaddress
 import tldextract
 
 from argparse import ArgumentParser
-
 from collections import OrderedDict
-
 import threading
 
 # =================================================================
@@ -46,6 +44,24 @@ def _normalized(s): #we  must comply with str(ip_address()) to pass tests
         except (ValueError, UnicodeDecodeError):
             return s
 
+#Edwards key strings MUST comply with cert.signature_algorithm_oid._name because of the switch in the host cert signer
+#We must switch on THE SIGNATURE USED TO SIGN ROOT CERT, not the curve of root itself, because Ed***PublicKey objects
+#have no curve attribute, and inferring them from available data is out of scope.
+#All this means that if you are dropping in a foreign intermediate as your root cert, you have to make sure the next
+#cert upstream (the one that signed root) is the same type (EC/Ed) as root is.  The code will probably tolerate different
+#upstream curves as long as they EC/Ed consistent with root. Give them the same curve to be sure, and to be covered by tests.
+_ED_CURVES = {
+    "ed448": ed448.Ed448PrivateKey,
+    "ed25519": ed25519.Ed25519PrivateKey
+    }
+#These ones don't need to
+_EC_CURVES = {
+    "k256": ec.SECP256K1,
+    "p224": ec.SECP224R1,
+    "p256": ec.SECP256R1,
+    "p384": ec.SECP384R1,
+    "p521": ec.SECP521R1
+}
 # =================================================================
 class CertificateAuthority(object):
     """
@@ -61,19 +77,20 @@ class CertificateAuthority(object):
     def __init__(self, ca_name,
                  ca_file_cache,
                  cert_cache=None,
-                 curve=ec.SECP384R1(),
+                 curve="ed25519",
                  ca_not_after=None,
                  ca_not_before=None,
                  hosts_not_after=None,
                  hosts_not_before=None,
                  overwrite=False,):
-
+        
         if isinstance(ca_file_cache, str):
+            ca_file_cache = str(os.path.abspath(ca_file_cache))
             self.ca_file_cache = RootCACache(ca_file_cache)
         else:
             self.ca_file_cache = ca_file_cache
-
         if isinstance(cert_cache, str):
+            cert_cache = str(os.path.abspath(cert_cache))
             self.cert_cache = FileCache(cert_cache)
         elif isinstance(cert_cache, int):
             self.cert_cache = LRUCache(max_size=cert_cache)
@@ -118,8 +135,8 @@ class CertificateAuthority(object):
     def is_host_ip(self, host):
         try:
             # if py2.7, need to decode to unicode str
-            if hasattr(host, 'decode'):  #pragma: no cover
-                host = host.decode('ascii')
+            #if hasattr(host, 'decode'):  #pragma: no cover
+            #    host = host.decode('ascii')
 
             ipaddress.ip_address(host)
             return True
@@ -255,7 +272,13 @@ class CertificateAuthority(object):
         ca_name = _normalized(ca_name)
 
         # Generate key
-        key = ec.generate_private_key(self.curve)
+        if self.curve in _EC_CURVES:
+            key = ec.generate_private_key(_EC_CURVES[self.curve]())
+        elif self.curve in _ED_CURVES:
+            key = _ED_CURVES[self.curve].generate()
+        else:
+            print(self.curve)
+            raise ValueError("Unsupported curve value.")
 
         # Generate cert
         builder = x509.CertificateBuilder()
@@ -289,7 +312,7 @@ class CertificateAuthority(object):
             critical=True)
         
         builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
-        cert = builder.sign(private_key=key, algorithm=hashes.SHA256())
+        cert = builder.sign(private_key=key, algorithm=(None if self.curve in _ED_CURVES else hashes.SHA256()))
 
         return cert, key
 
@@ -303,7 +326,13 @@ class CertificateAuthority(object):
         host = _normalized(host)
 
         # Generate Key
-        key = ec.generate_private_key(self.curve)
+        if self.curve in _EC_CURVES:
+            key = ec.generate_private_key(_EC_CURVES[self.curve]())
+        elif self.curve in _ED_CURVES:
+            key = _ED_CURVES[self.curve].generate()
+        else:
+            print(self.curve)
+            raise ValueError("Unsupported curve value.")
 
         # Generate Cert
         builder = x509.CertificateBuilder()
@@ -335,7 +364,9 @@ class CertificateAuthority(object):
         all_hosts += [x509.DNSName(fqdn) for fqdn in cert_fqdns]
 
         builder = builder.add_extension(x509.SubjectAlternativeName([san_host for san_host in all_hosts]),critical=False)
-        cert = builder.sign(private_key=root_key, algorithm=hashes.SHA256())
+        cert = builder.sign(
+            private_key=root_key,
+            algorithm=((None if root_cert.signature_algorithm_oid._name in _ED_CURVES else hashes.SHA256())))
         return cert, key
 
     def renew_host_certificate(self, cert, key):
@@ -348,11 +379,13 @@ class CertificateAuthority(object):
         builder = builder.issuer_name(cert.issuer)
         builder = builder.public_key(key.public_key())
         builder._extensions = cert.extensions
-        cert = builder.sign(private_key=self.ca_key, algorithm=hashes.SHA256())
+        cert = builder.sign(
+            private_key=self.ca_key, 
+            algorithm=(None if self.ca_cert.signature_algorithm_oid._name in _ED_CURVES else hashes.SHA256()))
         return cert, key
 
     def write_pem(self, buff, cert, key):
-        keys = key.private_bytes(Encoding.PEM,PrivateFormat.TraditionalOpenSSL,NoEncryption()).decode()
+        keys = key.private_bytes(Encoding.PEM,PrivateFormat.PKCS8,NoEncryption()).decode()
         certs = cert.public_bytes(Encoding.PEM).decode()
         buff.write((keys+certs).encode())
 
@@ -432,7 +465,8 @@ def main(args=None):
 
     parser.add_argument('-n', '--hostname',
                         help='Hostname certificate to create')
-
+    parser.add_argument('-r', '--curve', action='store', default="ed25519",
+                        help='Curve for new keypairs')
     parser.add_argument('-d', '--certs-dir', default=_CERTS_DIR,
                         help='Directory for host certificates')
 
@@ -470,11 +504,18 @@ def main(args=None):
     else:
         overwrite = False
 
+    if r.curve in _ED_CURVES or r.curve in _EC_CURVES:
+        curve = r.curve
+    else:
+        print("Invalid input for --curve, defaulting to ed25519")
+        curve = "ed25519"
+
     cert_cache = FileCache(certs_dir)
     ca_file_cache = RootCACache(root_cert)
 
     ca = CertificateAuthority(ca_name=r.certname,
                               ca_file_cache=ca_file_cache,
+                              curve=curve,
                               cert_cache=cert_cache,
                               overwrite=overwrite)
 
