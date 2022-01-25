@@ -20,6 +20,10 @@ import pytest
 
 CA_ROOT_FILENAME = 'certauth_test_ca.pem'
 
+#NEED TESTS FOR:
+#   ALL OTHER CURVES
+#   CA EXTENSIONS
+#   HOST EXTENSIONS
 
 @pytest.fixture
 def ca():
@@ -51,16 +55,17 @@ def setup_module():
 
 def teardown_module():
     os.chdir(orig_cwd)
-
     shutil.rmtree(TEST_CA_DIR)
     assert not os.path.isdir(TEST_CA_DIR)
     assert not os.path.isfile(TEST_CA_ROOT)
 
 
 def verify_cert_san(cert, san_list):
-    assert len(cert.extensions) == 1
+    assert len(cert.extensions) == 4
     print("TEST: ")
+    print(cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME))
     sans = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value.get_values_for_type(x509.DNSName)
+    print(sans)
     sans += [str(ipaddr) for ipaddr in cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value.get_values_for_type(x509.IPAddress)]
     print(sans)
 
@@ -72,7 +77,6 @@ def verify_san(ca, filename, san_list):
     assert os.path.isfile(filename)
     with open(filename, 'rb') as fh:
         cert, key = ca.read_pem(fh)
-
     verify_cert_san(cert, san_list)
 
 
