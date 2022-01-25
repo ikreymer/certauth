@@ -1,7 +1,7 @@
 import os
 import shutil
 
-from certauth.certauth import main, CertificateAuthority, FileCache, LRUCache, _ROOT_CA
+from certauth.certauth import main, CertificateAuthority, FileCache, LRUCache, _ROOT_CA, _ED_CURVES, _EC_CURVES
 
 import tempfile
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -44,6 +44,10 @@ def setup_module():
 
     global TEST_HOST_NAME
     TEST_HOST_NAME = "pytest_safetodelete"
+    global ED_CURVES, EC_CURVES, CURVES
+    ED_CURVES=[key for key in _ED_CURVES]
+    EC_CURVES=[key for key in _EC_CURVES]
+    CURVES = ED_CURVES+EC_CURVES
 
 def teardown_module():
     os.chdir(orig_cwd)
@@ -261,12 +265,15 @@ def test_ca_custom_not_before_not_after():
             ca_not_before=datetime.datetime.today() - datetime.timedelta(days=4),
             ca_not_after=datetime.datetime.utcnow() + datetime.timedelta(days=10))
 
-    # check PKCS12
-    buff_pk12 = ca.get_root_PKCS12()
-    assert len(buff_pk12) > 0
-
-    cert = pkcs12.load_pkcs12(buff_pk12, password=None).cert.certificate
-
+    # check PKCS12 if supported
+    if not ca.curve in ED_CURVES:
+        buff_pk12 = ca.get_root_PKCS12()
+        assert len(buff_pk12) > 0
+        #cert_pk12 = crypto.load_pkcs12(buff_pk12).get_certificate()
+        cert_pk12 = pkcs12.load_pkcs12(buff_pk12, password=None).cert.certificate
+    else:
+        cert, _ = ca.load_root_ca_cert("hosts_not_before_after.pytest.local")
+        print("pk12 is not supported for curve "+ca.curve+" so the ca_not_before_after pk12 test was circumvented. This is ok.")
     expected_not_before = datetime.datetime.today() - datetime.timedelta(days=4)
     expected_not_after = datetime.datetime.utcnow() + datetime.timedelta(days=10)
 
@@ -278,12 +285,15 @@ def test_hosts_custom_not_before_not_after():
             hosts_not_before=datetime.datetime.today() - datetime.timedelta(days=4),
             hosts_not_after=datetime.datetime.utcnow() + datetime.timedelta(days=10))
 
-    # check PKCS12
-    buff_pk12 = ca.get_host_PKCS12("proxy.example.test")
-    assert len(buff_pk12) > 0
-
-    cert = pkcs12.load_pkcs12(buff_pk12, password=None).cert.certificate
-
+    # check PKCS12 if supported
+    if not ca.curve in ED_CURVES:
+        buff_pk12 = ca.get_root_PKCS12()
+        assert len(buff_pk12) > 0
+        #cert_pk12 = crypto.load_pkcs12(buff_pk12).get_certificate()
+        cert_pk12 = pkcs12.load_pkcs12(buff_pk12, password=None).cert.certificate
+    else:
+        cert, _ = ca.load_cert("hosts_not_before_after.pytest.local")
+        print("pk12 is not supported for curve "+ca.curve+" so the ca_cert_in_mem pk12 test was circumvented. This is ok.")
     expected_not_before = datetime.datetime.today() - datetime.timedelta(days=4)
     expected_not_after = datetime.datetime.utcnow() + datetime.timedelta(days=10)
 
@@ -305,14 +315,15 @@ def test_ca_cert_in_mem():
     #cert_pem = crypto.load_certificate(FILETYPE_PEM, buff_pem)
     cert_pem = x509.load_pem_x509_certificate(buff_pem, default_backend())
     
-    # check PKCS12
-    buff_pk12 = ca.get_root_PKCS12()
-    assert len(buff_pk12) > 0
-
-    #cert_pk12 = crypto.load_pkcs12(buff_pk12).get_certificate()
-    cert_pk12 = pkcs12.load_pkcs12(buff_pk12, password=None).cert.certificate
-
-
+    # check PKCS12 if supported
+    if not ca.curve in ED_CURVES:
+        buff_pk12 = ca.get_root_PKCS12()
+        assert len(buff_pk12) > 0
+        #cert_pk12 = crypto.load_pkcs12(buff_pk12).get_certificate()
+        cert_pk12 = pkcs12.load_pkcs12(buff_pk12, password=None).cert.certificate
+    else:
+        cert, _ = ca.load_cert("hosts_not_before_after.pytest.local")
+        print("pk12 is not supported for curve "+ca.curve+" so the ca_cert_in_mem pk12 test was circumvented. This is ok.")
 
 def test_ca_lru_cache():
     lru = LRUCache(max_size=2)
@@ -356,8 +367,8 @@ def test_renew_expired_certificate():
     assert cert1.fingerprint(hashes.SHA256()) != cert2.fingerprint(hashes.SHA256())
 
     #Key is unchanged
-    key1pb = key1.private_bytes(Encoding.PEM,PrivateFormat.TraditionalOpenSSL,NoEncryption())
-    key2pb = key2.private_bytes(Encoding.PEM,PrivateFormat.TraditionalOpenSSL,NoEncryption())
+    key1pb = key1.private_bytes(Encoding.PEM,PrivateFormat.PKCS8,NoEncryption())
+    key2pb = key2.private_bytes(Encoding.PEM,PrivateFormat.PKCS8,NoEncryption())
     assert key1pb == key2pb
 
     #certificate's public key is unchanged
