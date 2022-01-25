@@ -3,7 +3,7 @@ import os
 
 from io import BytesIO
 
-from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519
+from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, load_pem_private_key, pkcs12
 from cryptography import x509
@@ -26,6 +26,7 @@ import threading
 
 _CA_VALID_DAYS = 1095
 _HOSTS_VALID_DAYS = 3
+_DEFAULT_CURVE = 'ed25519'
 
 def _CA_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_CA_VALID_DAYS)
 def _CA_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
@@ -44,17 +45,17 @@ def _normalized(s): #we  must comply with str(ip_address()) to pass tests
         except (ValueError, UnicodeDecodeError):
             return s
 
-#Edwards key strings MUST comply with cert.signature_algorithm_oid._name because of the switch in the host cert signer
-#We must switch on THE SIGNATURE USED TO SIGN ROOT CERT, not the curve of root itself, because Ed***PublicKey objects
-#have no curve attribute, and inferring them from available data is out of scope.
-#All this means that if you are dropping in a foreign intermediate as your root cert, you have to make sure the next
-#cert upstream (the one that signed root) is the same type (EC/Ed) as root is.  The code will probably tolerate different
-#upstream curves as long as they EC/Ed consistent with root. Give them the same curve to be sure, and to be covered by tests.
+def _signing_method_of(k):
+        if (isinstance(k, ed25519.Ed25519PrivateKey) or isinstance(k, ed448.Ed448PrivateKey)):
+            return None
+        else: #Only Ed does not use SHA256
+            return hashes.SHA256()
+        
 _ED_CURVES = {
     "ed448": ed448.Ed448PrivateKey,
     "ed25519": ed25519.Ed25519PrivateKey
     }
-#These ones don't need to
+
 _EC_CURVES = {
     "k256": ec.SECP256K1,
     "p224": ec.SECP224R1,
@@ -77,7 +78,7 @@ class CertificateAuthority(object):
     def __init__(self, ca_name,
                  ca_file_cache,
                  cert_cache=None,
-                 curve="ed25519",
+                 curve=_DEFAULT_CURVE,
                  ca_not_after=None,
                  ca_not_before=None,
                  hosts_not_after=None,
@@ -299,19 +300,19 @@ class CertificateAuthority(object):
         builder = builder.add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
         
         builder = builder.add_extension(x509.KeyUsage(
-            content_commitment=True,
+            content_commitment=False,
             crl_sign=True,
-            data_encipherment=True,
+            data_encipherment=False,
             decipher_only=False,
-            digital_signature=True,
+            digital_signature=False, #True to support OSCP
             encipher_only=False,
-            key_agreement=True,
+            key_agreement=False,
             key_cert_sign=True, 
-            key_encipherment=True),
+            key_encipherment=False),
             critical=True)
         
         builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
-        cert = builder.sign(private_key=key, algorithm=(None if self.curve in _ED_CURVES else hashes.SHA256()))
+        cert = builder.sign(private_key=key, algorithm=_signing_method_of(key))
 
         return cert, key
 
@@ -320,7 +321,6 @@ class CertificateAuthority(object):
                            is_ip=False,
                            cert_ips=set(),
                            cert_fqdns=set()):
-
         #In case host is an ip_address
         host = _normalized(host)
 
@@ -330,7 +330,7 @@ class CertificateAuthority(object):
         elif self.curve in _ED_CURVES:
             key = _ED_CURVES[self.curve].generate()
         else:
-            raise ValueError("Unsupported curve value.")
+            raise ValueError("Unsupported curve value "+str(self.curve))
 
         # Generate Cert
         builder = x509.CertificateBuilder()
@@ -360,11 +360,8 @@ class CertificateAuthority(object):
 
         all_hosts += [x509.IPAddress(ip) for ip in cert_ips]
         all_hosts += [x509.DNSName(fqdn) for fqdn in cert_fqdns]
-
-        builder = builder.add_extension(x509.SubjectAlternativeName([san_host for san_host in all_hosts]),critical=False)
-        cert = builder.sign(
-            private_key=root_key,
-            algorithm=((None if root_cert.signature_algorithm_oid._name in _ED_CURVES else hashes.SHA256())))
+        builder = builder.add_extension(x509.SubjectAlternativeName([san_host for san_host in all_hosts]),critical=False)  
+        cert = builder.sign(private_key=root_key, algorithm=_signing_method_of(root_key))
         return cert, key
 
     def renew_host_certificate(self, cert, key):
@@ -505,8 +502,8 @@ def main(args=None):
     if r.curve in _ED_CURVES or r.curve in _EC_CURVES:
         curve = r.curve
     else:
-        print("Invalid input for --curve, defaulting to ed25519")
-        curve = "ed25519"
+        print("Invalid input for --curve, defaulting to "+str(_DEFAULT_CURVE))
+        curve = _DEFAULT_CURVE
 
     cert_cache = FileCache(certs_dir)
     ca_file_cache = RootCACache(root_cert)
