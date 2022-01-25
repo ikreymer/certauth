@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, load_pem_private_key, pkcs12
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import NameOID, ExtensionOID, ExtendedKeyUsageOID
 import idna
 import ipaddress
 import datetime
@@ -297,23 +297,22 @@ class CertificateAuthority(object):
         subj = builder._subject_name.rfc4514_string().strip('CN=')
         builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subj)]))
         builder = builder.public_key(key.public_key())
-        builder = builder.add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-        
+        #Root cert
+        builder = builder.add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
         builder = builder.add_extension(x509.KeyUsage(
-            content_commitment=False,
+            key_cert_sign=True,
             crl_sign=True,
+            content_commitment=False,
             data_encipherment=False,
             decipher_only=False,
             digital_signature=False, #True to support OSCP
             encipher_only=False,
             key_agreement=False,
-            key_cert_sign=True, 
             key_encipherment=False),
             critical=True)
-        
+        builder = builder.add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(key.public_key()), critical=False)
         builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
         cert = builder.sign(private_key=key, algorithm=_signing_method_of(key))
-
         return cert, key
 
     def generate_host_cert(self, host, root_cert, root_key,
@@ -360,7 +359,26 @@ class CertificateAuthority(object):
 
         all_hosts += [x509.IPAddress(ip) for ip in cert_ips]
         all_hosts += [x509.DNSName(fqdn) for fqdn in cert_fqdns]
-        builder = builder.add_extension(x509.SubjectAlternativeName([san_host for san_host in all_hosts]),critical=False)  
+        builder = builder.add_extension(x509.SubjectAlternativeName([san_host for san_host in all_hosts]),critical=False)
+        #Leaf Certs
+        builder = builder.add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        builder = builder.add_extension(x509.KeyUsage(
+            content_commitment=False, #
+            crl_sign=False, #
+            data_encipherment=False, #
+            decipher_only=False, #
+            digital_signature=True,
+            encipher_only=False, #
+            key_agreement=False, #
+            key_cert_sign=False, #
+            key_encipherment=False),
+            critical=True)
+        builder.add_extension(x509.ExtendedKeyUsage([
+            ExtendedKeyUsageOID.CLIENT_AUTH,
+            ExtendedKeyUsageOID.SERVER_AUTH]),
+            critical=False)
+        builder.add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(root_cert.public_key()), critical=False)
+        builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
         cert = builder.sign(private_key=root_key, algorithm=_signing_method_of(root_key))
         return cert, key
 
@@ -376,7 +394,7 @@ class CertificateAuthority(object):
         builder._extensions = cert.extensions
         cert = builder.sign(
             private_key=self.ca_key, 
-            algorithm=(None if self.ca_cert.signature_algorithm_oid._name in _ED_CURVES else hashes.SHA256()))
+            algorithm=_signing_method_of(self.ca_key))
         return cert, key
 
     def write_pem(self, buff, cert, key):
