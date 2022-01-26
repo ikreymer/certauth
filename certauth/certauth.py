@@ -45,23 +45,17 @@ def _normalized(s): #we  must comply with str(ip_address()) to pass tests
         except (ValueError, UnicodeDecodeError):
             return s
 
-def _signing_method_of(k):
-        if (isinstance(k, ed25519.Ed25519PrivateKey) or isinstance(k, ed448.Ed448PrivateKey)):
-            return None
-        else: #Only Ed does not use SHA256
-            return hashes.SHA256()
-        
 _ED_CURVES = {
     "ed448": ed448.Ed448PrivateKey,
     "ed25519": ed25519.Ed25519PrivateKey
     }
 
 _EC_CURVES = {
-    "k256": ec.SECP256K1,
-    "p224": ec.SECP224R1,
-    "p256": ec.SECP256R1,
-    "p384": ec.SECP384R1,
-    "p521": ec.SECP521R1
+    "secp256k1": ec.SECP256K1,
+    "secp224r1": ec.SECP224R1,
+    "secp256r1": ec.SECP256R1,
+    "secp384r1": ec.SECP384R1,
+    "secp521r1": ec.SECP521R1
 }
 # =================================================================
 class CertificateAuthority(object):
@@ -294,8 +288,6 @@ class CertificateAuthority(object):
         else:
             builder = builder.not_valid_after(_CA_NOT_AFTER())
             
-        subj = builder._subject_name.rfc4514_string().strip('CN=')
-        builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subj)]))
         builder = builder.public_key(key.public_key())
         #Root cert
         builder = builder.add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
@@ -312,7 +304,11 @@ class CertificateAuthority(object):
             critical=True)
         builder = builder.add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(key.public_key()), critical=False)
         builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
-        cert = builder.sign(private_key=key, algorithm=_signing_method_of(key))
+        #if you implement anything that affects the dn ("subect_name") do it before this line
+        builder = builder.issuer_name(x509.Name([attribute for attribute in builder._subject_name]))
+        cert = builder.sign(
+            private_key=key,
+            algorithm=None if any(isinstance(key, _ED_CURVES[kt]) for kt in _ED_CURVES) else hashes.SHA256())
         return cert, key
 
     def generate_host_cert(self, host, root_cert, root_key,
@@ -344,9 +340,7 @@ class CertificateAuthority(object):
             builder = builder.not_valid_after(self.hosts_not_after)
         else:
             builder = builder.not_valid_after(_HOSTS_NOT_AFTER())
-        issuer = root_cert.subject.rfc4514_string().strip("CN=")
-        builder = builder.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, issuer)]))
-
+        builder = builder.issuer_name(x509.Name([attribute for attribute in root_cert.subject]))
         builder = builder.public_key(key.public_key())
 
         all_hosts = [x509.DNSName(host)]
@@ -373,13 +367,15 @@ class CertificateAuthority(object):
             key_cert_sign=False, #
             key_encipherment=False),
             critical=True)
-        builder.add_extension(x509.ExtendedKeyUsage([
+        builder = builder.add_extension(x509.ExtendedKeyUsage([
             ExtendedKeyUsageOID.CLIENT_AUTH,
             ExtendedKeyUsageOID.SERVER_AUTH]),
             critical=False)
-        builder.add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(root_cert.public_key()), critical=False)
+        builder = builder.add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(root_cert.public_key()), critical=False)
         builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
-        cert = builder.sign(private_key=root_key, algorithm=_signing_method_of(root_key))
+        cert = builder.sign(
+            private_key=root_key,
+            algorithm=None if any(isinstance(root_key, _ED_CURVES[kt]) for kt in _ED_CURVES) else hashes.SHA256())
         return cert, key
 
     def renew_host_certificate(self, cert, key):
@@ -394,7 +390,7 @@ class CertificateAuthority(object):
         builder._extensions = cert.extensions
         cert = builder.sign(
             private_key=self.ca_key, 
-            algorithm=_signing_method_of(self.ca_key))
+            algorithm=None if any(isinstance(self.ca_key, _ED_CURVES[kt]) for kt in _ED_CURVES) else hashes.SHA256())
         return cert, key
 
     def write_pem(self, buff, cert, key):
