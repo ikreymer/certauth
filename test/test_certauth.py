@@ -21,13 +21,19 @@ import pytest
 CA_ROOT_FILENAME = 'certauth_test_ca.pem'
 
 #NEED TESTS FOR:
-#   NON-DEFAULT CURVES
 #   CA EXTENSIONS, incl appropriate CONSTRAINTS, and USAGE
 #   HOST EXTENSIONS, incl appropriate CONSTRAINTS, USAGE
+#   FACTORY, GOOD AND BAD INPUTS
+
+@pytest.fixture(params=[key for key in _ED_CURVES]+[key for key in _EC_CURVES])
+def Curve(request):
+    return request.param
 
 @pytest.fixture
-def ca():
-    return CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR)
+def ca(Curve):
+    return CertificateAuthority('Test CA', TEST_CA_ROOT, TEST_CA_DIR, curve=Curve)
+
+
 
 def normalized(s): #we  must comply with str(ip_address()) to pass tests
         try:
@@ -87,18 +93,18 @@ def test_create_root():
     assert ret == 0
 
 def test_file_create_host_cert(ca):
-    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com'])
+    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', ca.curve+'.example.com'])
     assert ret == 0
-    certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
+    certfile = os.path.join(TEST_CA_DIR, ca.curve+'.example.com.pem')
 
-    verify_san(ca, certfile, ['example.com'])
+    verify_san(ca, certfile, [ca.curve+'.example.com'])
 
 def test_file_create_wildcard_host_cert_force_overwrite(ca):
-    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '--hostname', 'example.com', '-w', '-f'])
+    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '--hostname', ca.curve+'.com', '-w', '-f'])
     assert ret == 0
-    certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
+    certfile = os.path.join(TEST_CA_DIR, ca.curve+'.com.pem')
 
-    verify_san(ca, certfile, ['example.com', '*.example.com'])
+    verify_san(ca, certfile, [ca.curve+'.com', '*.'+ca.curve+'.com'])
 
 def test_file_wildcard(ca):
     cert_filename = ca.get_wildcard_cert('test.example.proxy')
@@ -180,12 +186,12 @@ def test_file_ipv6_wildcard_ignore(ca):
     os.remove(filename)
 
 def test_file_create_already_exists(ca):
-    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', 'example.com', '-w'])
+    ret = main([TEST_CA_ROOT, '-d', TEST_CA_DIR, '-n', ca.curve+'.com', '-w'])
     assert ret == 1
-    certfile = os.path.join(TEST_CA_DIR, 'example.com.pem')
+    certfile = os.path.join(TEST_CA_DIR, ca.curve+'.com.pem')
 
     # from previous run
-    verify_san(ca, certfile, ['example.com', '*.example.com'])
+    verify_san(ca, certfile, [ca.curve+'.com', '*.'+ca.curve+'.com'])
 
     # remove now
     os.remove(certfile)
@@ -358,18 +364,21 @@ def test_create_root_no_dir_already_exists():
     ret = main([CA_ROOT_FILENAME, '-c', 'Test Root Cert'])
     assert ret == 1
 
-def test_renew_expired_certificate():
-    ca = CertificateAuthority('Test Custom CA', TEST_CA_ROOT,
-            hosts_not_before=datetime.datetime.today() - datetime.timedelta(days=4),
-            hosts_not_after=datetime.datetime.utcnow() - datetime.timedelta(days=2))
+def test_renew_expired_certificate(ca):
 
-    cert1, key1 = ca.load_cert('ABC.test.example.proxy')
+    ca.hosts_not_before = datetime.datetime.today() - datetime.timedelta(days=4)
+    ca.hosts_not_after = datetime.datetime.utcnow() - datetime.timedelta(days=2)
+    print("Not Before")
+    print(ca.hosts_not_before)
+    print(ca.hosts_not_after)
+
+    cert1, key1 = ca.load_cert(ca.curve+'.test.example.proxy')
 
     #We have made an expired certificate
     assert (datetime.datetime.utcnow()-cert1.not_valid_after).total_seconds() > 0
     
     #It should renew
-    cert2, key2 = ca.load_cert('ABC.test.example.proxy')
+    cert2, key2 = ca.load_cert(ca.curve+'.test.example.proxy')
     assert cert1.fingerprint(hashes.SHA256()) != cert2.fingerprint(hashes.SHA256())
 
     #Key is unchanged
