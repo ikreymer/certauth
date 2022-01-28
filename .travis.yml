@@ -1,15 +1,14 @@
 language: python
 
 python:
-  - "3.5"
-  - "3.6"
   - "3.7"
   - "3.8"
   - "3.9"
+  - "3.10"
 
 matrix:
   include:
-    - python: "3.10"
+    - python: "3.11"
       dist: impish
       sudo: required
 
@@ -24,6 +23,8 @@ install:
   - pip install coverage pytest-cov codecov
 
 script:
+  #This method of testing is deprecated and flagged for removal.
+  #Per docs: use tox instead
   - python setup.py test
 
 after_success:
