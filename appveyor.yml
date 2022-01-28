@@ -18,7 +18,6 @@ install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
   - "python -m pip install --upgrade pip"
   - "pip install -U setuptools"
-  - "pip install pyopenssl"
   - "pip install coverage pytest-cov codecov"
 
 build_script:
