@@ -5,7 +5,7 @@ from io import BytesIO
 
 from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, load_pem_private_key, pkcs12
+from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption, BestAvailableEncryption, load_pem_private_key, pkcs12
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID, ExtensionOID, ExtendedKeyUsageOID
@@ -28,16 +28,14 @@ _CA_VALID_DAYS = 1095
 _HOSTS_VALID_DAYS = 3
 _DEFAULT_CURVE = 'ed25519'
 
+_CERTS_DIR = './ca/certs/'
+_CERT_NAME = 'certauth sample CA'
+_ROOT_CA = '!!root_ca'
+
 def _CA_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_CA_VALID_DAYS)
 def _CA_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
 def _HOSTS_NOT_AFTER(): return datetime.datetime.utcnow() + datetime.timedelta(days=_HOSTS_VALID_DAYS)
 def _HOSTS_NOT_BEFORE(): return datetime.datetime.utcnow() - datetime.timedelta(days=1)
-
-_CERTS_DIR = './ca/certs/'
-
-_CERT_NAME = 'certauth sample CA'
-
-_ROOT_CA = '!!root_ca'
 
 def _normalized(s): #we  must comply with str(ip_address()) to pass tests
         try:
@@ -113,26 +111,19 @@ class CertificateAuthority(object):
         # if cached, just read pem
         if cert_str:
             cert, key = self.read_pem(BytesIO(cert_str))
-
         else:
             cert, key = self.generate_ca_root(self.ca_name)
-
             # Write cert + key
             buff = BytesIO()
             self.write_pem(buff, cert, key)
             cert_str = buff.getvalue()
-
             # store cert in cache
             self.ca_file_cache[_ROOT_CA] = cert_str
-
+            
         return cert, key
 
     def is_host_ip(self, host):
         try:
-            # if py2.7, need to decode to unicode str
-            #if hasattr(host, 'decode'):  #pragma: no cover
-            #    host = host.decode('ascii')
-
             ipaddress.ip_address(host)
             return True
         except (ValueError, UnicodeDecodeError):
@@ -297,14 +288,14 @@ class CertificateAuthority(object):
             content_commitment=False,
             data_encipherment=False,
             decipher_only=False,
-            digital_signature=False, #True to support OSCP
+            digital_signature=False, #True to support OCSP
             encipher_only=False,
             key_agreement=False,
             key_encipherment=False),
             critical=True)
         builder = builder.add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(key.public_key()), critical=False)
         builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
-        #if you implement anything that affects the dn ("subect_name") do it before this line
+        #if you implement anything that affects the dn do it before this line
         builder = builder.issuer_name(x509.Name([attribute for attribute in builder._subject_name]))
         cert = builder.sign(
             private_key=key,
@@ -315,34 +306,32 @@ class CertificateAuthority(object):
                            wildcard=False,
                            is_ip=False,
                            cert_ips=set(),
-                           cert_fqdns=set()):
+                           cert_fqdns=set(),
+                           pub_key=None):
         #In case host is an ip_address
         host = _normalized(host)
+        builder = x509.CertificateBuilder()
 
         # Generate Key
-        if self.curve in _EC_CURVES:
-            key = ec.generate_private_key(_EC_CURVES[self.curve]())
-        elif self.curve in _ED_CURVES:
-            key = _ED_CURVES[self.curve].generate()
+        if not pub_key:
+            if self.curve in _EC_CURVES:
+                key = ec.generate_private_key(_EC_CURVES[self.curve]())
+            elif self.curve in _ED_CURVES:
+                key = _ED_CURVES[self.curve].generate()
+            else:
+                raise ValueError("Unsupported curve value "+str(self.curve))
+            pub_key = key.public_key()
         else:
-            raise ValueError("Unsupported curve value "+str(self.curve))
+            key = ''
 
         # Generate Cert
-        builder = x509.CertificateBuilder()
+        
         builder = builder.serial_number(x509.random_serial_number())
         builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)]))
-        if self.hosts_not_before:
-            builder = builder.not_valid_before(self.hosts_not_before)
-        else:
-            builder = builder.not_valid_before(_HOSTS_NOT_BEFORE())
-
-        if self.hosts_not_after:
-            builder = builder.not_valid_after(self.hosts_not_after)
-        else:
-            builder = builder.not_valid_after(_HOSTS_NOT_AFTER())
+        builder = builder.not_valid_before(self.hosts_not_before if self.hosts_not_after else _HOSTS_NOT_BEFORE())
+        builder = builder.not_valid_after(self.hosts_not_after if self.hosts_not_after else _HOSTS_NOT_AFTER())
         builder = builder.issuer_name(x509.Name([attribute for attribute in root_cert.subject]))
-        builder = builder.public_key(key.public_key())
-
+        builder = builder.public_key(pub_key)
         all_hosts = [x509.DNSName(host)]
 
         if wildcard:
@@ -353,26 +342,40 @@ class CertificateAuthority(object):
 
         all_hosts += [x509.IPAddress(ip) for ip in cert_ips]
         all_hosts += [x509.DNSName(fqdn) for fqdn in cert_fqdns]
-        builder = builder.add_extension(x509.SubjectAlternativeName([san_host for san_host in all_hosts]),critical=False)
+
+        builder = builder.add_extension(
+            x509.SubjectAlternativeName([
+                san_host for san_host in all_hosts]),
+                critical=False)
         #Leaf Certs
-        builder = builder.add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-        builder = builder.add_extension(x509.KeyUsage(
-            content_commitment=False, #
-            crl_sign=False, #
-            data_encipherment=False, #
-            decipher_only=False, #
-            digital_signature=True,
-            encipher_only=False, #
-            key_agreement=False, #
-            key_cert_sign=False, #
-            key_encipherment=False),
+        builder = builder.add_extension(
+            x509.BasicConstraints(
+                ca=False,
+                path_length=None),
             critical=True)
-        builder = builder.add_extension(x509.ExtendedKeyUsage([
-            ExtendedKeyUsageOID.CLIENT_AUTH,
-            ExtendedKeyUsageOID.SERVER_AUTH]),
+        builder = builder.add_extension(
+            x509.KeyUsage(
+                content_commitment=False, #
+                crl_sign=False, #
+                data_encipherment=False, #
+                decipher_only=False, #
+                digital_signature=True,
+                encipher_only=False, #
+                key_agreement=False, #
+                key_cert_sign=False, #
+                key_encipherment=False),
+            critical=True)
+        builder = builder.add_extension(
+            x509.ExtendedKeyUsage([
+                ExtendedKeyUsageOID.CLIENT_AUTH,
+                ExtendedKeyUsageOID.SERVER_AUTH]),
             critical=False)
-        builder = builder.add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(root_cert.public_key()), critical=False)
-        builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+        builder = builder.add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(root_cert.public_key()),
+            critical=False)
+        builder = builder.add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(key.public_key()),
+            critical=False)
         cert = builder.sign(
             private_key=root_key,
             algorithm=None if any(isinstance(root_key, _ED_CURVES[kt]) for kt in _ED_CURVES) else hashes.SHA256())
@@ -393,19 +396,73 @@ class CertificateAuthority(object):
             algorithm=None if any(isinstance(self.ca_key, _ED_CURVES[kt]) for kt in _ED_CURVES) else hashes.SHA256())
         return cert, key
 
-    def write_pem(self, buff, cert, key):
-        keys = key.private_bytes(Encoding.PEM,PrivateFormat.PKCS8,NoEncryption()).decode()
-        certs = cert.public_bytes(Encoding.PEM).decode()
-        buff.write((keys+certs).encode())
+    def write_pem(self, buff, cert, key, key_pass=None):
+        buff.write(
+            key.private_bytes(
+                Encoding.PEM,
+                PrivateFormat.PKCS8,
+                BestAvailableEncryption(key_pass.encode()) if key_pass else NoEncryption()
+                )+
+            cert.public_bytes(
+                Encoding.PEM
+                )
+            )
 
-    def read_pem(self, buff):
+    def read_pem(self, buff, key_pass=None):
         buff = buff.read().decode().split("-----\n-----")
         keys,certs = buff[0]+"-----\n","-----"+buff[1]
         cert = x509.load_pem_x509_certificate(certs.encode(), default_backend())
-        key = load_pem_private_key(keys.encode(), password=None)
+        key = load_pem_private_key(keys.encode(), password=key_pass)
         return cert, key
 
-    
+    @classmethod
+    def from_external_file_pair(cls, crt_path, key_path, ca_file_cache=None,cert_cache=None,key_pass=None):
+        from pathlib import Path
+        with open(crt_path, "r") as cf, open(key_path, "r") as kf:
+            key = load_pem_private_key(kf.read().encode(), password=key_pass)
+            cert = x509.load_pem_x509_certificate(cf.read().encode(), default_backend())
+        try:
+            assert cert.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS).value.ca
+            assert cert.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS).value.path_length == 0
+        except (x509.extensions.ExtensionNotFound, AssertionError) as e:
+            raise AssertionError("This certificate does not have the necessary constraints to act as a certificate authority.")
+        
+        assert cert.public_key().public_numbers() == key.public_key().public_numbers()
+        
+        if isinstance(key, ec.EllipticCurvePrivateKey):
+            if key.curve.name in _EC_CURVES:
+                curve=key.curve.name
+            else:
+                raise ValueError("Unsupported valid EC curve.")
+        elif isinstance(key, ed.Ed25519PrivateKey):
+            curve="ed25519",
+        elif isinstance(key, ed.Ed448PrivateKey):
+            curve="ed448"
+        else:
+            raise ValueError("Unsupported key type.")
+
+        ca_name = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+
+        RootCACache(
+            ca_file_cache if ca_file_cache else str(Path(key_path).parent/ca_name)+".pem"
+            )[_ROOT_CA] = (
+            key.private_bytes(
+                Encoding.PEM,
+                PrivateFormat.PKCS8,
+                BestAvailableEncryption(key_pass.encode()) if key_pass else NoEncryption()
+                )+
+            cert.public_bytes(
+                Encoding.PEM
+                )
+            )
+        return cls(
+            ca_name,
+            ca_file_cache if ca_file_cache else str(Path(key_path).parent/ca_name)+".pem",
+            cert_cache=cert_cache if cert_cache else str(Path(crt_path).parent/(ca_name+"-certificates")),
+            overwrite=False
+            )
+     
+
 
 # =================================================================
 class FileCache(object):
@@ -500,7 +557,11 @@ def main(args=None):
     hostname = r.hostname
 
     if r.cert_ips != '':
+        for c in '[ ]':
+            cert_ips = cert_ips.replace(c,'')
         cert_ips = r.cert_ips.split(',')
+        for cip in cert_ips:
+            cip = _normalized(cip)
     else:
         cert_ips = []
     if r.cert_fqdns != '':
