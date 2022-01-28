@@ -16,14 +16,14 @@ environment:
 
 install:        
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
-  - "python3 -m pip install --upgrade pip"
+  - "python -m pip install --upgrade pip"
   - "pip3 install -U setuptools"
   - "pip3 install coverage pytest-cov codecov"
 
 build_script:
-  - "python3 setup.py install"
+  - "python setup.py install"
 
 test_script:
-  - "python3 setup.py test"
+  - "python setup.py test"
 
 
