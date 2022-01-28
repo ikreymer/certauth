@@ -10,9 +10,6 @@ matrix:
     - python: "3.10"
       dist: impish
       sudo: required
-    - python: "3.11"
-      dist: impish
-      sudo: required
 
 os:
   - linux
