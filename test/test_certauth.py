@@ -21,9 +21,9 @@ import pytest
 CA_ROOT_FILENAME = 'certauth_test_ca.pem'
 
 #NEED TESTS FOR:
-#   ALL OTHER CURVES
-#   CA EXTENSIONS
-#   HOST EXTENSIONS
+#   NON-DEFAULT CURVES
+#   CA EXTENSIONS, incl appropriate CONSTRAINTS, and USAGE
+#   HOST EXTENSIONS, incl appropriate CONSTRAINTS, USAGE
 
 @pytest.fixture
 def ca():
@@ -61,7 +61,9 @@ def teardown_module():
 
 
 def verify_cert_san(cert, san_list):
-    assert len(cert.extensions) == 4
+    #We Always have 1.CONSTRAINTS, 2.USAGE, 3.EXT_USAGE, 4.SUBJ_KID, 5.AUTH_KID
+    #Test if we added 6.SAN
+    assert len(cert.extensions) == 6
     print("TEST: ")
     print(cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME))
     sans = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value.get_values_for_type(x509.DNSName)
