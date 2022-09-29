@@ -18,10 +18,10 @@ from collections import OrderedDict
 import threading
 
 # =================================================================
-# Valid for 3 years from now
-# Max validity is 39 months:
-# https://casecurity.org/2015/02/19/ssl-certificate-validity-periods-limited-to-39-months-starting-in-april/
-CERT_NOT_AFTER = 3 * 365 * 24 * 60 * 60
+# Valid for 1 year from now
+# Max validity is 13 months:
+# https://stackoverflow.com/a/65239775
+CERT_NOT_AFTER = 365 * 24 * 60 * 60
 
 CERTS_DIR = './ca/certs/'
 
